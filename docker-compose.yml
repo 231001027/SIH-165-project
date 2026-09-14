@@ -1,0 +1,61 @@
+# Optional Docker deployment path.
+#
+# The application's default local-dev configuration needs NO Docker and NO
+# Postgres at all -- it runs against a local SQLite file (see backend/.env.example).
+# This compose file is provided for the Postgres/pgvector pilot deployment path
+# described in the blueprint (Part 7.4). Note: the current prototype computes
+# similarity search with local TF-IDF/SVD embeddings + brute-force cosine
+# similarity in Python (see backend/app/ml/embeddings.py) rather than native
+# pgvector ANN operators -- pointing DATABASE_URL at this Postgres instance
+# gives you relational storage on Postgres, but wiring an actual pgvector
+# index is a documented future upgrade (see README "Future Enhancements").
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sifguard
+      POSTGRES_PASSWORD: sifguard
+      POSTGRES_DB: sifguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - sifguard_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sifguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sifguard:sifguard@postgres:5432/sifguard
+      JWT_SECRET: change-this-secret-in-production-CHANGE-ME
+      FRONTEND_URL: http://localhost:5173
+      LLM_PROVIDER: ""
+      LLM_API_KEY: ""
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  sifguard_pgdata:

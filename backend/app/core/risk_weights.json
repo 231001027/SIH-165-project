@@ -1,0 +1,20 @@
+{
+  "_disclaimer": "PROTOTYPE SCORING MODEL. These weights are our own design decision for the SIH26165 hackathon MVP, NOT an official OIL, IOGP, DEKRA or EEI formula. See blueprint Part 2.4.",
+  "weights": {
+    "hazard_energy": 30,
+    "worker_exposure": 25,
+    "barrier_failure": 25,
+    "activity_criticality": 10,
+    "repeat_precursor": 10
+  },
+  "bands": {
+    "HIGH": 60,
+    "MEDIUM": 30,
+    "LOW": 0
+  },
+  "confidence_bands": {
+    "HIGH": 75,
+    "MEDIUM": 45,
+    "LOW": 20
+  }
+}

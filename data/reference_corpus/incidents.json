@@ -1,0 +1,86 @@
+[
+  {
+    "citation_label": "OSHA News Release 24-532-DAL, Dallas Region (March 18, 2024)",
+    "citation_url": "https://www.osha.gov/news/newsreleases/region6/03182024-0",
+    "narrative": "A worker at an Oklahoma oilfield services contractor entered a permit-required confined space (a production water tank) at a wellsite to repair a leaking bulkhead valve. The atmosphere was not tested before entry, and residual hydrocarbon compounds remaining in the tank had displaced oxygen and produced hazardous vapors; the worker lost consciousness and died of asphyxiation. Two coworkers who entered in an attempted rescue were also affected by the atmosphere, though not fatally injured. The employer had not evaluated the space for hazards, had not provided flame-resistant PPE, and had not trained workers on confined-space entry or its hazards.",
+    "lsr_category": "Confined Space",
+    "occurred_year": 2023
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 18-2023 - Hydrogen Sulfide Release",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA4204.pdf",
+    "narrative": "At an oil and gas production facility, a worker responded alone to an alarming water pump and attempted to close process valves to isolate it. The pump was not locked out or otherwise controlled under a hazardous-energy program, and it unexpectedly energized, releasing hydrogen-sulfide-laden water into the enclosed pump house; the worker was fatally overcome by the gas. Investigators found the employer had failed to develop, train on, or enforce lockout/tagout procedures for this equipment. Hours later, the worker's spouse, unable to reach him, entered the building searching for him and was also fatally exposed to the gas.",
+    "lsr_category": "Energy Isolation",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 18-2023 - Hydrogen Sulfide Release",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA4204.pdf",
+    "narrative": "The same oil and gas production facility had installed multiple hydrogen sulfide (H2S) detectors in and around a pump house, but investigators found several had been left set to a 'testing' mode that prevented their alarm signals from ever reaching the control-room panel, and other correctly configured detectors also failed to transmit alerts. When a pump unexpectedly released H2S gas into the building, no audible or control-room alarm activated to warn the worker inside or trigger an emergency response. The worker was fatally exposed, and a family member who later entered the building looking for him was also killed by the undetected gas.",
+    "lsr_category": "Bypassing Safety Controls",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 21-2025 - Enclosed Tank Cleaning",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA4490.pdf",
+    "narrative": "Maintenance workers were cleaning the interior of a rail tank car that had previously carried natural gasoline. The employer did not test the internal atmosphere before allowing entry, and residual product vapors had displaced oxygen inside the tank to hazardous levels. The first worker to enter became unresponsive, and a coworker who went in to help - wearing only an air-purifying respirator, which does not supply oxygen - was also overcome and died. Two additional workers who tried to assist found they could not breathe and had to retreat from the tank.",
+    "lsr_category": "Confined Space",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 12-2015 - Asphyxiation in Sewer Line Manhole",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA3819.pdf",
+    "narrative": "A construction crew working near a newly built, not-yet-connected sewer manhole noticed their foreman was missing and found the manhole cover removed. A coworker descended roughly 20 feet into the manhole to help and found the foreman unresponsive; the coworker became disoriented from the atmosphere before being helped out with forced air from a fan. The foreman was later pronounced dead from asphyxiation. Investigators found the atmosphere had never been tested or monitored, no attendant had been posted, and workers had not been trained to recognize confined-space hazards, even though the manhole met the criteria of a permit-required confined space.",
+    "lsr_category": "Confined Space",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 2-2012 - Oil Patch: Struck By, Falling Object, Suspended Load",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA-FF-3615.pdf",
+    "narrative": "During a well-servicing operation, a rig crew was pulling casing from a gas well using the service rig's hoisting system. An experienced rig hand was standing under the load block when the rig's load line - a wire rope in service for about three years and later found rusted, dry, and missing several wire strands - failed. The load block struck the worker, causing fatal blunt-force trauma. Investigators found the line had not been adequately inspected or lubricated and had been rubbing against equipment, evidenced by heavy wear marks on a nearby guard.",
+    "lsr_category": "Line of Fire",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 3-2012 - Oil Patch: Struck By, Falling Object, Suspended Load",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA-FF-3616.pdf",
+    "narrative": "While lowering a pair of 2,600-pound elevator bales onto a rig floor with an air hoist, two workers used their hands and bodies to guide the suspended load into position instead of staying clear of it. As the bales touched down, the wire rope sling supporting them came loose and the bales fell, striking both workers and fatally injuring one. Investigators found the sling had not been adequately inspected for wear beforehand and that no tag lines were used to control the load or keep workers clear during the lift.",
+    "lsr_category": "Line of Fire",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 5-2012 - Oil Patch: Flash Fire from Crude Oil Vapors",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA-FF-3618.pdf",
+    "narrative": "A crew excavated a trench to repair a leaking crude oil flow line and cut out a section of pipe. When a manual pipe-threading tool proved inadequate, workers substituted an electric pipe threader - not rated for use in a hazardous location - to re-thread the pipe while standing in the trench. The tool ignited residual flammable vapors from the line, causing a flash fire that engulfed the trench; one of the two workers in the trench later died of severe burns and the other was seriously injured. No job hazard analysis, atmospheric monitoring, or hot work permitting process had been used before the work began.",
+    "lsr_category": "Hot Work",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 4-2012 - Oil Patch: Fall from Derrick",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA-FF-3617.pdf",
+    "narrative": "A derrickman climbed back up to the derrick board of a drilling rig after a break and unhooked from the ladder's climb-assist device without reattaching his personal fall-arrest system. While using a tail rope to help steady a stand of pipe being raised into position, he lost his balance after releasing the rope. With no fall protection connected, he fell approximately 90 feet to the rig floor and was fatally injured.",
+    "lsr_category": "Working at Height",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 8-2014 - Material Hoist Collapse",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA3718.pdf",
+    "narrative": "During erection of a construction material hoist tower, two workers rode on top of the hoist's carriage - with their fall-arrest lanyards connected to the hoist's own gin pole rather than an independent anchor point - to install additional tower sections. The hoist's safety chain, installed contrary to the manufacturer's specifications and left uninspected after sitting idle for about a year, broke, and the carriage's safety-brake system failed to engage because it had been improperly installed. The carriage fell 90 feet, the gin pole broke away, and the worker anchored to it fell to his death.",
+    "lsr_category": "Safe Mechanical Lifting",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 1-2012 - Oil Patch: Vehicle, Highway Incident",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA-FF-3614.pdf",
+    "narrative": "Four rig crew members were driving home together at night on a wet two-lane road after a 12-hour shift. The driver approached a curve at roughly 47 mph, above the safe speed for the wet conditions, lost control, and the pickup truck skidded off the shoulder and rolled over five times before coming to rest off the roadway. The driver and one rear-seat passenger were ejected during the rollover and killed, while the two coworkers who remained inside the vehicle sustained only minor injuries; only one of the four occupants had been wearing a seat belt.",
+    "lsr_category": "Driving",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "OSHA FatalFacts No. 19-2023 - Confined Space Fire",
+    "citation_url": "https://www.osha.gov/sites/default/files/publications/OSHA_FF-4278.pdf",
+    "narrative": "Two contract crews were issued confined-space entry permits to perform maintenance inside a connected pair of industrial process towers - one applying flammable resin and combustible sheeting to the interior walls, the other sandblasting in an adjoining section. When the resin failed to cure quickly in cold weather, a worker used an electric heat gun to warm it without obtaining a hot work permit or having a fire extinguisher on hand, and the entry permits' required sections, including designation of an entry supervisor, had not been completed. The heat gun ignited the resin, and because the two towers were treated as separate spaces despite being physically connected, the fire and smoke spread into the second tower, collapsing the support scaffolding and fatally injuring two workers.",
+    "lsr_category": "Work Authorization",
+    "occurred_year": null
+  }
+]

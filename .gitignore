@@ -1,0 +1,27 @@
+# Python
+backend/venv/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+backend/app/ml/artifacts/
+backend/sifguard.db
+backend/tests/test_sifguard.db
+backend/.pytest_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Env files (keep .env.example committed, never the real .env)
+backend/.env
+frontend/.env
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local run logs
+*.log
+

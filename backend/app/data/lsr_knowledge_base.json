@@ -1,0 +1,114 @@
+{
+  "_source": "IOGP Report 459 (2018 revision, 9 rules) -- rule names and action statements are Kind-1 sourced facts per the blueprint. Trigger concepts, example narratives and required_energy_categories below are OUR proposed matching architecture (Kind 3), not official IOGP text.",
+  "rules": [
+    {
+      "rule": "Bypassing Safety Controls",
+      "action": "Obtain authorisation before overriding or disabling safety controls",
+      "trigger_concepts": ["bypass", "override", "disabled alarm", "defeated interlock", "removed safeguard", "alarm silenced", "interlock defeated"],
+      "required_energy_categories": [],
+      "required_lexicon_tags": ["BYPASS_SAFETY_CONTROLS"],
+      "barriers": ["Supervision", "Permit-to-Work"],
+      "example_narratives": [
+        "Operator bypassed the high-pressure trip alarm to keep the unit running during startup.",
+        "Interlock was defeated to allow the pump to run with the guard open."
+      ]
+    },
+    {
+      "rule": "Confined Space",
+      "action": "Obtain authorisation before entering a confined space",
+      "trigger_concepts": ["confined space", "vessel entry", "tank entry", "manhole", "enclosed space", "gas test", "atmospheric test", "entered a tank", "entered the tank", "entered the vessel", "tank for inspection", "standby attendant", "manway"],
+      "required_energy_categories": ["CHEMICAL"],
+      "required_lexicon_tags": ["CONFINED_SPACE"],
+      "barriers": ["Gas Detection", "Permit-to-Work", "Communication / Handover"],
+      "example_narratives": [
+        "Contractor entered a tank for inspection before the gas test was completed and the permit was signed.",
+        "Worker entered the confined space without a standby attendant posted at the entry point."
+      ]
+    },
+    {
+      "rule": "Driving",
+      "action": "Follow safe driving rules",
+      "trigger_concepts": ["driving", "vehicle", "seatbelt", "speeding", "journey management", "mobile phone while driving"],
+      "required_energy_categories": ["MOTION"],
+      "required_lexicon_tags": ["DRIVING"],
+      "barriers": ["Supervision"],
+      "example_narratives": [
+        "Driver was using a mobile phone while driving between well sites on the access road.",
+        "Vehicle skidded on a wet access road after exceeding the site speed limit."
+      ]
+    },
+    {
+      "rule": "Energy Isolation",
+      "action": "Verify isolation and zero energy before work begins",
+      "trigger_concepts": ["isolation", "loto", "lockout", "tagout", "zero energy", "de-energized", "de-energised", "residual pressure", "stored energy"],
+      "required_energy_categories": ["PRESSURE", "ELECTRICAL", "MECHANICAL"],
+      "required_lexicon_tags": ["ENERGY_ISOLATION"],
+      "barriers": ["Isolation / LOTO", "Permit-to-Work"],
+      "example_narratives": [
+        "Technician opened a flange before confirming isolation and residual pressure was released.",
+        "Line opened before confirming isolation, residual pressure released, no injury.",
+        "Electrician started work on a panel before confirming it was de-energized."
+      ]
+    },
+    {
+      "rule": "Hot Work",
+      "action": "Control flammables and ignition sources before hot work",
+      "trigger_concepts": ["hot work", "welding", "grinding", "cutting torch", "naked flame", "fire watch", "flammable atmosphere"],
+      "required_energy_categories": ["CHEMICAL"],
+      "required_lexicon_tags": ["HOT_WORK"],
+      "barriers": ["Gas Detection", "Permit-to-Work", "Supervision"],
+      "example_narratives": [
+        "Welding was carried out near an open drum of solvent without a fire watch or a gas test.",
+        "Grinding work generated sparks near an area with flammable vapours present."
+      ]
+    },
+    {
+      "rule": "Line of Fire",
+      "action": "Position yourself to avoid moving objects, pressure release, dropped objects",
+      "trigger_concepts": ["line of fire", "suspended load", "dropped object", "pinch point", "struck by", "under the load"],
+      "required_energy_categories": ["MECHANICAL", "GRAVITY"],
+      "required_lexicon_tags": ["LINE_OF_FIRE"],
+      "barriers": ["Exclusion Zone", "Supervision"],
+      "example_narratives": [
+        "Worker walked beneath a suspended load during a lifting operation to retrieve a dropped tool.",
+        "Employee stood in the pinch point between the pipe and the crane hook during positioning."
+      ]
+    },
+    {
+      "rule": "Safe Mechanical Lifting",
+      "action": "Plan the lift and control the area",
+      "trigger_concepts": ["lifting operation", "crane lift", "rigging", "lift plan", "hoisting", "sling"],
+      "required_energy_categories": ["MECHANICAL", "GRAVITY"],
+      "required_lexicon_tags": ["MECHANICAL_LIFTING"],
+      "barriers": ["Exclusion Zone", "Supervision"],
+      "example_narratives": [
+        "Crane lift proceeded without a documented lift plan and the exclusion zone was not established.",
+        "Rigging sling showed visible wear but was used anyway during the lift."
+      ]
+    },
+    {
+      "rule": "Work Authorization",
+      "action": "Work with a valid permit when required",
+      "trigger_concepts": ["work permit", "permit to work", "permit-to-work", "ptw", "work authorization", "work authorisation", "no permit", "without a permit", "permit had expired", "permit expired", "valid permit", "began without a valid work permit"],
+      "required_energy_categories": [],
+      "required_lexicon_tags": ["PERMIT_TO_WORK"],
+      "barriers": ["Permit-to-Work"],
+      "example_narratives": [
+        "Maintenance work began without a valid work permit being issued for the task.",
+        "Permit had expired but the crew continued working on the equipment."
+      ]
+    },
+    {
+      "rule": "Working at Height",
+      "action": "Protect yourself against a fall when working at height",
+      "trigger_concepts": ["working at height", "scaffold", "fall arrest", "fall protection", "elevated platform", "lanyard", "harness"],
+      "required_energy_categories": ["GRAVITY"],
+      "required_lexicon_tags": ["WORKING_AT_HEIGHT"],
+      "barriers": ["Fall Protection"],
+      "example_narratives": [
+        "Worker leaned out from a scaffold platform to reach a valve without re-anchoring the fall-arrest lanyard.",
+        "Technician climbed onto an elevated platform without a harness to inspect equipment."
+      ]
+    }
+  ]
+}
