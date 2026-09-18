@@ -116,6 +116,7 @@ def _serialize_report(report: Report, analysis: AnalysisResult | None) -> Report
             "explanation_text": analysis.explanation_text,
             "explanation_source": analysis.explanation_source,
             "repeat_precursor_count": analysis.repeat_precursor_count,
+            "original_prediction": analysis.original_prediction,
             "barriers": [
                 {"barrier_type": b.barrier_type, "status": b.status.value if hasattr(b.status, "value") else b.status,
                  "evidence_text": b.evidence_text, "confidence": b.confidence}

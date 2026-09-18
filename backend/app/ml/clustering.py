@@ -54,7 +54,19 @@ def cluster_reports(narratives: list[str], embeddings: np.ndarray) -> tuple[list
 def _top_terms_for_cluster(provider, texts: list[str], top_n: int = 5) -> list[str]:
     if not texts or not provider.is_ready():
         return []
-    tfidf_matrix = provider.tfidf_features(texts)
+    # Sentence-Transformers backend has no TF-IDF vocabulary — fall back to
+    # simple token frequency so cluster labels still render.
+    if not hasattr(provider, "tfidf_features") or getattr(provider, "vectorizer", None) is None:
+        from collections import Counter
+        from app.nlp.preprocess import tokenize
+        counts: Counter[str] = Counter()
+        for t in texts:
+            counts.update(tok.lower() for tok in tokenize(t) if len(tok) > 3)
+        return [w for w, _ in counts.most_common(top_n)]
+    try:
+        tfidf_matrix = provider.tfidf_features(texts)
+    except (AttributeError, RuntimeError):
+        return []
     mean_scores = np.asarray(tfidf_matrix.mean(axis=0)).ravel()
     feature_names = provider.vectorizer.get_feature_names_out()
     top_idx = mean_scores.argsort()[::-1][:top_n]

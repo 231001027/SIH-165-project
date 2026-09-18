@@ -1,18 +1,11 @@
 """
-Sentence-embedding backbone (blueprint Part 5.4 "Embedding + classifier (ML)").
+Sentence-embedding backbone (blueprint Part 5.4).
 
-Design decision (documented per source-discipline rules): the blueprint's
-preferred choice is a Sentence-Transformer model. That pulls a multi-hundred-
-MB PyTorch + transformer-weights download, which is a poor fit for a
-hackathon environment that must install and run reliably offline in minutes.
-We instead use a TF-IDF + Truncated-SVD ("latent semantic") embedding fit
-locally on the report corpus in seconds with no network dependency. It plays
-the same architectural role -- a dense vector per report used for similarity
-search, clustering and as classifier input -- and the EmbeddingProvider
-interface below is intentionally the only thing the rest of the app talks
-to, so a real Sentence-Transformer backend can be swapped in later (set
-EMBEDDING_MODEL in .env and extend `load_provider`) without touching
-similarity/clustering/classification call sites.
+Default: TF-IDF + Truncated-SVD fitted locally (hackathon / offline-safe).
+Optional: Sentence-Transformers when EMBEDDING_MODEL is a HuggingFace model id
+(e.g. paraphrase-multilingual-MiniLM-L12-v2) for multilingual retrieval.
+
+Rule NLP stays English-only regardless of which embedding backend is active.
 """
 from __future__ import annotations
 
@@ -27,19 +20,29 @@ ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 _VECTORIZER_PATH = ARTIFACT_DIR / "tfidf_vectorizer.joblib"
 _SVD_PATH = ARTIFACT_DIR / "svd_model.joblib"
+_ST_META_PATH = ARTIFACT_DIR / "st_provider_meta.joblib"
+
+TFIDF_SVD_LOCAL = "tfidf-svd-local"
+DEFAULT_ST_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 
-class EmbeddingProvider:
+def _normalize_rows(vectors: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return vectors / norms
+
+
+class TfidfSvdEmbeddingProvider:
+    """Local TF-IDF + Truncated-SVD dense embeddings."""
+
+    backend_name = TFIDF_SVD_LOCAL
+
     def __init__(self):
         self.vectorizer: TfidfVectorizer | None = None
         self.svd: TruncatedSVD | None = None
-        # Kept deliberately small relative to the hackathon-scale gold set
-        # (~100-200 rows): a high-dimensional embedding concatenated with the
-        # 5 rule-engine components would badly overfit the SIF classifier
-        # (see app/ml/classifier.py) on so few training rows.
         self._n_components = 20
 
-    def fit(self, corpus: list[str]) -> None:
+    def fit(self, corpus: list[str], *, persist: bool = True) -> None:
         n_components = min(self._n_components, max(2, len(corpus) - 1))
         self.vectorizer = TfidfVectorizer(
             max_features=4000, ngram_range=(1, 2), stop_words="english", min_df=1
@@ -47,8 +50,9 @@ class EmbeddingProvider:
         tfidf_matrix = self.vectorizer.fit_transform(corpus)
         self.svd = TruncatedSVD(n_components=n_components, random_state=42)
         self.svd.fit(tfidf_matrix)
-        joblib.dump(self.vectorizer, _VECTORIZER_PATH)
-        joblib.dump(self.svd, _SVD_PATH)
+        if persist:
+            joblib.dump(self.vectorizer, _VECTORIZER_PATH)
+            joblib.dump(self.svd, _SVD_PATH)
 
     def load(self) -> bool:
         if _VECTORIZER_PATH.exists() and _SVD_PATH.exists():
@@ -60,14 +64,18 @@ class EmbeddingProvider:
     def is_ready(self) -> bool:
         return self.vectorizer is not None and self.svd is not None
 
+    @property
+    def dimension(self) -> int | None:
+        if self.svd is None:
+            return None
+        return int(self.svd.n_components)
+
     def embed(self, texts: list[str]) -> np.ndarray:
         if not self.is_ready():
             raise RuntimeError("EmbeddingProvider not fitted/loaded yet.")
         tfidf_matrix = self.vectorizer.transform(texts)
         vectors = self.svd.transform(tfidf_matrix)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return vectors / norms
+        return _normalize_rows(vectors)
 
     def embed_single(self, text: str) -> list[float]:
         return self.embed([text])[0].tolist()
@@ -78,20 +86,102 @@ class EmbeddingProvider:
         return self.vectorizer.transform(texts)
 
 
-_provider_singleton: EmbeddingProvider | None = None
+class SentenceTransformerEmbeddingProvider:
+    """Multilingual dense embeddings via sentence-transformers (retrieval only)."""
+
+    def __init__(self, model_name: str = DEFAULT_ST_MODEL):
+        self.model_name = model_name
+        self.backend_name = model_name
+        self._model = None
+        self._dimension: int | None = None
+
+    def fit(self, corpus: list[str], *, persist: bool = True) -> None:
+        # Pretrained model — fit is a no-op load + optional metadata persist.
+        self.load()
+        if persist:
+            joblib.dump({"model_name": self.model_name, "dimension": self._dimension}, _ST_META_PATH)
+
+    def load(self) -> bool:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "sentence-transformers is required for EMBEDDING_MODEL="
+                f"{self.model_name!r}. Install with: pip install sentence-transformers"
+            ) from exc
+        self._model = SentenceTransformer(self.model_name)
+        # Probe dimension once
+        probe = self._model.encode(["dimension probe"], normalize_embeddings=True)
+        self._dimension = int(np.asarray(probe).shape[-1])
+        return True
+
+    def is_ready(self) -> bool:
+        return self._model is not None
+
+    @property
+    def dimension(self) -> int | None:
+        return self._dimension
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        if not self.is_ready():
+            raise RuntimeError("SentenceTransformerEmbeddingProvider not loaded yet.")
+        vectors = self._model.encode(list(texts), normalize_embeddings=True, show_progress_bar=False)
+        return np.asarray(vectors, dtype=np.float64)
+
+    def embed_single(self, text: str) -> list[float]:
+        return self.embed([text])[0].tolist()
+
+    def tfidf_features(self, texts: list[str]):
+        """ST backend has no TF-IDF matrix — clustering falls back to empty terms."""
+        raise AttributeError("tfidf_features not available on SentenceTransformerEmbeddingProvider")
+
+    @property
+    def vectorizer(self):
+        return None
 
 
-def get_embedding_provider() -> EmbeddingProvider:
+# Back-compat alias used by seed_data and older imports
+EmbeddingProvider = TfidfSvdEmbeddingProvider
+
+_provider_singleton = None
+
+
+def resolve_embedding_model_name() -> str:
+    try:
+        from app.core.config import get_settings
+        name = (get_settings().EMBEDDING_MODEL or TFIDF_SVD_LOCAL).strip()
+        return name or TFIDF_SVD_LOCAL
+    except Exception:
+        return TFIDF_SVD_LOCAL
+
+
+def load_provider(model_name: str | None = None):
+    """Construct and load the embedding provider for the given (or configured) model."""
+    name = (model_name or resolve_embedding_model_name()).strip() or TFIDF_SVD_LOCAL
+    if name == TFIDF_SVD_LOCAL:
+        provider = TfidfSvdEmbeddingProvider()
+        provider.load()
+        return provider
+    provider = SentenceTransformerEmbeddingProvider(model_name=name)
+    provider.load()
+    return provider
+
+
+def get_embedding_provider():
     global _provider_singleton
     if _provider_singleton is None:
-        _provider_singleton = EmbeddingProvider()
-        _provider_singleton.load()
+        _provider_singleton = load_provider()
     return _provider_singleton
 
 
+def reset_embedding_provider() -> None:
+    """Clear singleton (tests / re-seed after EMBEDDING_MODEL change)."""
+    global _provider_singleton
+    _provider_singleton = None
+
+
 def cosine_similarity_matrix(query_vec: np.ndarray, corpus_vecs: np.ndarray) -> np.ndarray:
-    """Vectors from EmbeddingProvider.embed are already L2-normalized, so
-    cosine similarity reduces to a dot product."""
+    """Vectors from providers are L2-normalized, so cosine reduces to a dot product."""
     if corpus_vecs.size == 0:
         return np.array([])
     return corpus_vecs @ query_vec

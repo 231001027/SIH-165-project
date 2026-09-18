@@ -50,6 +50,7 @@ class AnalysisOut(BaseModel):
     explanation_text: str
     explanation_source: str
     repeat_precursor_count: int
+    original_prediction: dict | None = None
     barriers: list[BarrierOut] = []
 
     class Config:

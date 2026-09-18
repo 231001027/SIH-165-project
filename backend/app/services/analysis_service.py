@@ -253,16 +253,28 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
 
     provider = get_embedding_provider()
     if not provider.is_ready():
-        corpus = [r.narrative for r in db.query(Report).all()]
-        if raw_narrative not in corpus:
-            corpus.append(raw_narrative)
-        if len(corpus) >= 3:
-            provider.fit(corpus)
+        from app.ml.embeddings import TFIDF_SVD_LOCAL, resolve_embedding_model_name
+        if resolve_embedding_model_name() != TFIDF_SVD_LOCAL:
+            try:
+                provider.load()
+            except Exception:
+                pass
+        else:
+            corpus = [r.narrative for r in db.query(Report).all()]
+            if raw_narrative not in corpus:
+                corpus.append(raw_narrative)
+            if len(corpus) >= 3:
+                # In-memory only — never clobber seed-fitted on-disk artifacts
+                # with a tiny cold-start corpus (would shrink SVD dims and break
+                # the classifier feature width).
+                provider.fit(corpus, persist=False)
 
     ml_probs = None
     classifier = get_classifier()
-    if provider.is_ready() and classifier.is_ready():
+    embedding = None
+    if provider.is_ready():
         embedding = provider.embed_single(raw_narrative)
+    if provider.is_ready() and classifier.is_ready() and embedding is not None:
         feature_vector = build_feature_vector(embedding, {
             "hazard_energy_component": rule_result.hazard_energy_component,
             "worker_exposure_component": rule_result.worker_exposure_component,
@@ -270,9 +282,11 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             "activity_criticality_component": rule_result.activity_criticality_component,
             "repeat_precursor_component": rule_result.repeat_precursor_component,
         })
-        ml_probs = classifier.predict_proba(feature_vector)
-    else:
-        embedding = provider.embed_single(raw_narrative) if provider.is_ready() else [0.0] * 20
+        expected = getattr(classifier.model, "n_features_in_", None)
+        if expected is None or feature_vector.shape[0] == expected:
+            ml_probs = classifier.predict_proba(feature_vector)
+    if embedding is None:
+        embedding = [0.0] * 20
 
     final_classification, confidence, review_required, abstain_reason = _fuse_and_decide(
         rule_band, rule_conf, ml_probs
@@ -415,9 +429,18 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
     db.refresh(analysis)
 
     try:
-        faiss_index.rebuild_from_db(db)
+        # Incremental insert for new reports; existing ids stay until rebuild_from_db
+        faiss_index.upsert_vector(report.id, fp_embedding)
+    except faiss_index.DimensionMismatchError:
+        try:
+            faiss_index.rebuild_from_db(db)
+        except Exception:
+            pass
     except Exception:
-        pass
+        try:
+            faiss_index.rebuild_from_db(db)
+        except Exception:
+            pass
 
     return analysis
 

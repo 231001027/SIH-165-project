@@ -34,11 +34,11 @@ class Settings(BaseSettings):
     # failure strategy").
     LLM_PROVIDER: str = ""  # "" | "anthropic" | "ollama"
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "llama3.2"
+    LLM_MODEL: str = "llama3:latest"
     # Compose service DNS is http://ollama:11434; local non-Docker default below.
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
 
-    EMBEDDING_MODEL: str = "tfidf-svd-local"  # prototype embedding backbone
+    EMBEDDING_MODEL: str = "tfidf-svd-local"  # or paraphrase-multilingual-MiniLM-L12-v2
 
     FRONTEND_URL: str = "http://localhost:5173"
 

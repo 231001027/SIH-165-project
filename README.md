@@ -79,13 +79,11 @@ human HSE review required"* — instead of forcing a confident answer.
 A few pragmatic engineering decisions were made deliberately, and are disclosed here rather than glossed
 over:
 
-- **Embeddings are TF-IDF + Truncated-SVD (local, `scikit-learn`), not Sentence-Transformers.**
-  A transformer embedding model is a multi-hundred-MB download with a PyTorch dependency — a poor fit for
-  a hackathon environment that must install and run reliably in minutes, fully offline. TF-IDF+SVD plays
-  the same architectural role (a dense vector per report, used for similarity search, clustering, and as
-  classifier input) and is fit locally on the report corpus in seconds. The `EmbeddingProvider` interface
-  (`app/ml/embeddings.py`) is the only thing the rest of the app talks to, so a real transformer backend
-  could be swapped in later without touching similarity/clustering/classification call sites.
+- **Default embeddings are TF-IDF + Truncated-SVD (local, `scikit-learn`).**
+  A Sentence-Transformers backend is wired behind the same provider interface and enabled by setting
+  `EMBEDDING_MODEL` to a HuggingFace model id (e.g. `paraphrase-multilingual-MiniLM-L12-v2`) for
+  multilingual retrieval. The hackathon default stays TF-IDF+SVD so install/run stays offline and minutes-fast.
+  Set `EMBEDDING_MODEL=tfidf-svd-local` (default) or a ST model name in `.env`; see `app/ml/embeddings.py`.
 - **No spaCy dependency.** Tokenization, sentence-splitting and clause-splitting are pure-Python/regex
   (`app/nlp/preprocess.py`). This avoids a model-download dependency and keeps the negation engine fully
   deterministic and unit-testable.
@@ -200,24 +198,22 @@ fabricated or hidden, per the project's evaluation principle: **recall and false
 HIGH/MEDIUM are treated as the primary safety metric, not overall accuracy**, because a missed SIF
 precursor is a worse failure mode than a false alarm.
 
-Snapshot from the seeded demo dataset (315 synthetic reports, 63 held-out test cases) — regenerate with
-`python seed_data.py --reset` to reproduce (deterministic, fixed random seed):
+Snapshot from the seeded demo dataset (315 synthetic reports, held-out test cases) — regenerate with
+`python seed_data.py --reset` then open `/evaluation` (or `GET /api/evaluation`) to reproduce. Numbers
+below are directional on synthetic data; after a group-by-base-narrative split they can shift vs earlier
+row-shuffle snapshots — always trust the live Evaluation page over a stale README line:
 
-- HIGH-class recall ≈ 0.48 (precision ≈ 0.80), false-negative rate on HIGH/MEDIUM ≈ 0.18
-- LSR top-1 accuracy ≈ 0.84
+- HIGH-class recall / precision and false-negative rate on HIGH/MEDIUM: see Evaluation page (primary safety metrics)
+- LSR top-1 accuracy: see Evaluation page
 - Full per-class breakdown, confusion matrix and LSR per-rule accuracy: `GET /api/evaluation` or the
   Evaluation page in the UI.
 
-**Reading the HIGH-class recall honestly.** Raw recall looks lower than an earlier, smaller (155-row)
-version of this dataset reported — that is the expected and correct effect of deliberately tripling the
-MEDIUM/borderline-case content in the gold set (see §9) rather than a regression. Inspecting the actual
-misses shows why: of the gold HIGH cases the system does not classify HIGH, the large majority land in
-`REVIEW` or `MEDIUM` — i.e. the abstention/trust-layer policy correctly recognising a genuinely harder,
-more ambiguous narrative and declining to force a confident HIGH rather than silently dropping it. The
-false-negative rate on HIGH/MEDIUM (a *silent* drop to LOW/NON_SIF) is the metric this project treats as
-the real safety signal, and it improved as the rule engine's keyword/lexicon coverage was broadened against
-this harder set — see the per-report breakdown via `GET /api/evaluation` to inspect this directly rather
-than taking the summary number alone.
+**Reading the HIGH-class recall honestly.** Raw HIGH recall on this harder gold set (expanded MEDIUM /
+borderline content) is often lower than an earlier, smaller (155-row) version — that is the expected
+effect of deliberate dataset design rather than a silent regression. Inspecting misses usually shows
+`REVIEW` or `MEDIUM` rather than a silent drop to LOW/NON_SIF. The false-negative rate on HIGH/MEDIUM
+(a *silent* drop to LOW/NON_SIF) is the metric this project treats as the real safety signal — see the
+per-report breakdown via `GET /api/evaluation`.
 
 These are prototype-methodology numbers on a small, team-authored synthetic set — not a claim about
 production accuracy on real OIL data.
@@ -301,11 +297,15 @@ for exactly one purpose: giving a submitted report something real and checkable 
 - **LLM layer** is optional (Ollama via Docker Compose by default in compose; Anthropic also supported).
   It only polishes an already-computed explanation using structured fields + retrieved excerpts; it is never
   a classification authority. If Ollama is down, the API falls back to the template explanation.
-- **Multilingual**: Devanagari tokenization + a small Hindi/Romanized safety lexicon are supported; dense
-  unsupported script still abstains to `REVIEW` (never a silent empty analysis). Full Assamese NER and
-  production multilingual models remain future work.
-- **Retrieval**: FAISS over local TF-IDF+SVD embeddings with cited excerpts on similar matches. Native
-  `pgvector` ANN and Sentence-Transformers remain optional upgrades.
+- **Multilingual (split deliberately):** The **rule NLP pipeline is English-only**. Narratives that fail the
+  Latin-token language guard receive `UNSUPPORTED_LANGUAGE` (not a silent empty / NON_SIF analysis) and are
+  routed to human review. Romanized Hindi may still pass the ASCII gate (documented limitation). Full
+  Assamese NER and multilingual rule extraction remain future work. **Retrieval** can use multilingual
+  Sentence-Transformers when `EMBEDDING_MODEL` is set — that does **not** reopen Devanagari for entity/LSR/SIF
+  rule extraction.
+- **Retrieval**: FAISS over the active embedding provider (default TF-IDF+SVD; optional multilingual ST)
+  with cited excerpts and incremental index updates + dimension validation. Native `pgvector` ANN remains
+  an optional Postgres upgrade path.
 - **Evaluation metrics** on the synthetic gold set are directional. Embeddings are fit on the **train
   split only** during seed to reduce test leakage into the vector space. Per-class scores on small
   classes (`LOW` / `MEDIUM`) still carry sampling noise — do not treat them as production OIL KPIs.
@@ -316,11 +316,12 @@ for exactly one purpose: giving a submitted report something real and checkable 
 
 ## 12. Future Enhancements
 
-Swap in a real Sentence-Transformer embedding backend behind the existing `EmbeddingProvider` interface;
-wire native `pgvector` ANN search on Postgres; grow the gold set with multi-annotator agreement; expand
-the public reference corpus further; deepen Hindi/Assamese coverage; private/on-prem LLM hosting for an
-OIL pilot. ISO 45001 / PSM tags are secondary overlays today — a full standards ontology rewrite is not
-in scope for this prototype.
+Default retrieval uses TF-IDF+SVD; multilingual Sentence-Transformers is already behind `EMBEDDING_MODEL`
+for cross-lingual similarity (rule NLP stays English-only). Remaining upgrades: native `pgvector` ANN on
+Postgres; grow the gold set with multi-annotator agreement; expand the public reference corpus with
+verbatim DGMS annual-report extracts; deepen Hindi/Assamese **rule** coverage; private/on-prem LLM hosting
+for an OIL pilot. ISO 45001 / PSM tags are Kind-3 secondary overlays today — a full standards ontology
+rewrite is not in scope for this prototype.
 
 ---
 
@@ -373,7 +374,7 @@ npm install
 copy .env.example .env
 ```
 
-### B. Seed demo data (users, ~155 synthetic reports, train the classifier, compute clusters)
+### B. Seed demo data (users, ~315 synthetic reports, train the classifier, compute clusters)
 
 ```powershell
 cd backend
@@ -417,8 +418,8 @@ python -m pytest tests/ -v
 
 ```powershell
 docker compose up --build
-# then, in another terminal, seed the Postgres-backed database:
-docker compose exec backend python seed_data.py --reset
+# `seed` service runs `python seed_data.py --reset` once before backend starts.
+# Re-seed later with: docker compose run --rm seed
 ```
 
 ### G. Stop

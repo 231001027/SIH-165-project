@@ -204,6 +204,26 @@ export default function ReportDetailPage() {
                   <Field label="Potential Consequence" value={a.potential_consequence} />
                 </div>
                 )}
+                {a.original_prediction?.sif_classification &&
+                  a.original_prediction.sif_classification !== a.sif_classification && (
+                  <div className="mt-3 rounded-lg border border-line bg-surface-muted/50 px-3.5 py-2.5 text-[12.5px] text-ink_text-secondary">
+                    <p className="font-bold text-ink_text-primary">Original model prediction (pre-review)</p>
+                    <p className="mt-0.5">
+                      Snapshot: <span className="font-semibold">{a.original_prediction.sif_classification}</span>
+                      {a.original_prediction.confidence != null && (
+                        <> at {a.original_prediction.confidence}% confidence</>
+                      )}
+                      {" → "}current: <span className="font-semibold">{a.sif_classification}</span>
+                    </p>
+                  </div>
+                )}
+                {a.original_prediction?.sif_classification &&
+                  a.original_prediction.sif_classification === a.sif_classification && (
+                  <p className="mt-3 text-[11px] text-ink_text-muted">
+                    Original prediction snapshot: {a.original_prediction.sif_classification}
+                    {a.original_prediction.confidence != null ? ` (${a.original_prediction.confidence}%)` : ""} — unchanged by review.
+                  </p>
+                )}
                 {a.sif_classification === "UNSUPPORTED_LANGUAGE" && (
                   <p className="text-[13px] text-ink_text-secondary">
                     Routed to the human review queue. Re-submit an English narrative, or correct fields manually after review.
@@ -298,6 +318,11 @@ export default function ReportDetailPage() {
                     <p className="mt-1.5 text-[12.5px] font-bold text-ink_text-primary">
                       {s.source === "PUBLIC_CORPUS" ? s.citation_label : s.title}
                     </p>
+                    {s.source === "PUBLIC_CORPUS" && String(s.citation_label || "").includes("LIMITATION") && (
+                      <p className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10.5px] font-medium leading-snug text-amber-900">
+                        Source limitation: team-authored demo narrative grounded on the cited portal — not a verbatim annual-report case extract.
+                      </p>
+                    )}
                     <p className="mt-0.5 text-[11px] text-ink_text-secondary">{s.life_saving_rule}</p>
                     {s.excerpt && (
                       <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">“{s.excerpt}”</p>

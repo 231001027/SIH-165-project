@@ -38,10 +38,27 @@ services:
       - |
         echo "Waiting for Ollama..."
         until curl -sf http://ollama:11434/api/tags >/dev/null; do sleep 2; done
-        echo "Pulling llama3.2..."
-        curl -sf http://ollama:11434/api/pull -d '{"name":"llama3.2"}'
-        echo "Model llama3.2 ready."
+        echo "Pulling llama3:latest..."
+        curl -sf http://ollama:11434/api/pull -d '{"name":"llama3:latest"}'
+        echo "Model llama3:latest ready."
     restart: "no"
+
+  # One-shot seed so first `docker compose up` is not an empty DB.
+  # Re-run with: docker compose run --rm seed
+  seed:
+    build: ./backend
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sifguard:sifguard@postgres:5432/sifguard
+      JWT_SECRET: change-this-secret-in-production-CHANGE-ME
+      LLM_PROVIDER: ""
+      EMBEDDING_MODEL: tfidf-svd-local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "seed_data.py", "--reset"]
 
   backend:
     build: ./backend
@@ -52,7 +69,7 @@ services:
       FRONTEND_URL: http://localhost:5173
       LLM_PROVIDER: ollama
       LLM_API_KEY: ollama
-      LLM_MODEL: llama3.2
+      LLM_MODEL: llama3:latest
       OLLAMA_BASE_URL: http://ollama:11434
     ports:
       - "8000:8000"
@@ -61,6 +78,8 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      seed:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
 

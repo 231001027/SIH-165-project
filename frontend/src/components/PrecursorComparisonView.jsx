@@ -54,6 +54,12 @@ export default function PrecursorComparisonView({ comparison, onClose }) {
               {comparison.citation_label || "Open citation"}
             </a>
           )}
+          {comparison.match_source === "PUBLIC_CORPUS" &&
+            String(comparison.citation_label || "").includes("LIMITATION") && (
+            <p className="mt-1.5 max-w-md rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10.5px] font-medium leading-snug text-amber-900">
+              Source limitation: team-authored demo narrative for portal grounding — not a verbatim DGMS/OSHA case extract.
+            </p>
+          )}
         </div>
         <button type="button" onClick={onClose} className="text-[12px] font-bold text-ink_text-muted hover:text-ink_text-primary">Close</button>
       </div>

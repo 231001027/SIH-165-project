@@ -172,21 +172,43 @@ def load_reference_corpus(db) -> list[int]:
 
 
 def fit_embeddings_train_only(db, meta: dict[int, dict]) -> None:
-    """Fit TF-IDF+SVD on train-split narratives only to avoid test leakage into the embedding space."""
-    from app.ml.embeddings import EmbeddingProvider, get_embedding_provider
+    """Prepare embedding provider. TF-IDF+SVD is fit on train-split only;
+    Sentence-Transformers loads the pretrained model (no corpus fit / no leakage)."""
+    from app.ml.embeddings import (
+        TFIDF_SVD_LOCAL,
+        TfidfSvdEmbeddingProvider,
+        load_provider,
+        reset_embedding_provider,
+        resolve_embedding_model_name,
+    )
     import app.ml.embeddings as emb_mod
 
+    model_name = resolve_embedding_model_name()
     train_ids = [rid for rid, info in meta.items() if info.get("split") == "train"]
     narratives = [
         r.narrative for r in db.query(Report).filter(Report.id.in_(train_ids)).all() if r.narrative
     ]
-    if len(narratives) < 3:
-        print(f"  Too few train narratives ({len(narratives)}) to fit embeddings.")
+
+    reset_embedding_provider()
+    if model_name == TFIDF_SVD_LOCAL:
+        if len(narratives) < 3:
+            print(f"  Too few train narratives ({len(narratives)}) to fit embeddings.")
+            return
+        provider = TfidfSvdEmbeddingProvider()
+        provider.fit(narratives)
+        emb_mod._provider_singleton = provider
+        print(
+            f"  Fitted TF-IDF+SVD embeddings on {len(narratives)} train-split narratives "
+            f"only (test held out)."
+        )
         return
-    provider = EmbeddingProvider()
-    provider.fit(narratives)
+
+    provider = load_provider(model_name)
     emb_mod._provider_singleton = provider
-    print(f"  Fitted TF-IDF+SVD embeddings on {len(narratives)} train-split narratives only (test held out).")
+    print(
+        f"  Loaded Sentence-Transformers provider {model_name!r} "
+        f"(dim={getattr(provider, 'dimension', '?')}; no train-corpus fit)."
+    )
 
 
 def run_rule_only_pass(db, report_ids: list[int]):

@@ -63,7 +63,12 @@ def retrain_classifier_from_feedback(db: Session) -> dict:
 
     X, y = [], []
     used_feedback = 0
+    expected_dim = getattr(provider, "dimension", None)
     for report, analysis, fp in rows:
+        if not fp.embedding:
+            continue
+        if expected_dim is not None and len(fp.embedding) != expected_dim:
+            continue
         label = sif_overrides.get(report.id)
         if label:
             used_feedback += 1
@@ -86,6 +91,7 @@ def retrain_classifier_from_feedback(db: Session) -> dict:
         "trained": True,
         "n_train": len(X),
         "feedback_overrides": used_feedback,
+        "artifact_version": f"feedback-retrain-{len(X)}-{used_feedback}",
         **metrics,
     }
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)

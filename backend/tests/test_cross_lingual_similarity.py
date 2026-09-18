@@ -1,0 +1,83 @@
+"""Cross-lingual retrieval + FAISS dimension validation (Phase 2).
+
+Rule NLP stays English-only; these tests cover retrieval embeddings only.
+"""
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from app.ml import faiss_index
+from app.ml.embeddings import (
+    DEFAULT_ST_MODEL,
+    SentenceTransformerEmbeddingProvider,
+    TfidfSvdEmbeddingProvider,
+)
+
+
+EN_LOTO = (
+    "Worker opened a flange on a pressurized hydrocarbon line without "
+    "verifying lock-out tag-out isolation. Energy isolation was bypassed."
+)
+HI_LOTO = (
+    "कर्मचारी ने लॉक-आउट टैग-आउट अलगाव सत्यापित किए बिना दबाव वाली "
+    "हाइड्रोकार्बन लाइन पर फ्लैंज खोला। ऊर्जा अलगाव बाईपास किया गया।"
+)
+UNRELATED = (
+    "Office stationery inventory was updated after the quarterly audit of "
+    "printer toner cartridges and desk supplies."
+)
+
+
+@pytest.fixture()
+def clean_faiss(tmp_path, monkeypatch):
+    """Isolate FAISS artifacts so tests do not touch the real index."""
+    monkeypatch.setattr(faiss_index, "ARTIFACT_DIR", tmp_path)
+    monkeypatch.setattr(faiss_index, "_INDEX_PATH", tmp_path / "faiss_index.bin")
+    monkeypatch.setattr(faiss_index, "_IDS_PATH", tmp_path / "faiss_report_ids.npy")
+    faiss_index._index = None
+    faiss_index._report_ids = []
+    yield
+    faiss_index._index = None
+    faiss_index._report_ids = []
+
+
+def test_faiss_rejects_dimension_mismatch(clean_faiss):
+    faiss_index.rebuild_index([1, 2], np.random.randn(2, 8).astype(np.float32))
+    with pytest.raises(faiss_index.DimensionMismatchError):
+        faiss_index.add_vectors([3], np.random.randn(1, 4).astype(np.float32))
+    with pytest.raises(faiss_index.DimensionMismatchError):
+        faiss_index.search(np.random.randn(4).astype(np.float32), top_k=1)
+
+
+def test_faiss_incremental_add(clean_faiss):
+    faiss_index.rebuild_index([10], np.ones((1, 4), dtype=np.float32))
+    faiss_index.add_vectors([20], np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32))
+    hits = faiss_index.search([1.0, 0.0, 0.0, 0.0], top_k=2)
+    assert any(rid == 20 for rid, _ in hits)
+    assert faiss_index.expected_dimension() == 4
+
+
+def test_tfidf_provider_embed_shape():
+    provider = TfidfSvdEmbeddingProvider()
+    provider.fit([EN_LOTO, UNRELATED, "Scaffold work at height without harness."])
+    vec = provider.embed_single(EN_LOTO)
+    assert len(vec) == provider.dimension
+    assert abs(np.linalg.norm(vec) - 1.0) < 1e-5
+
+
+def test_cross_lingual_loto_beats_unrelated_baseline():
+    """EN ↔ Devanagari LOTO should outrank EN ↔ unrelated office text."""
+    pytest.importorskip("sentence_transformers")
+    provider = SentenceTransformerEmbeddingProvider(DEFAULT_ST_MODEL)
+    provider.load()
+
+    en_vec = np.asarray(provider.embed_single(EN_LOTO))
+    hi_vec = np.asarray(provider.embed_single(HI_LOTO))
+    un_vec = np.asarray(provider.embed_single(UNRELATED))
+
+    cross = float(en_vec @ hi_vec)
+    baseline = float(en_vec @ un_vec)
+    assert cross > baseline, (
+        f"Expected EN↔HI LOTO cosine ({cross:.4f}) > EN↔unrelated ({baseline:.4f})"
+    )

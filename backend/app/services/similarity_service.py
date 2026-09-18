@@ -42,7 +42,16 @@ def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[di
     target_report = db.query(Report).filter(Report.id == report_id).first()
     query_narrative = target_report.narrative if target_report else ""
 
-    hits = faiss_index.search(target_fp.embedding, top_k=top_k, exclude_id=report_id)
+    hits = []
+    try:
+        hits = faiss_index.search(target_fp.embedding, top_k=top_k, exclude_id=report_id)
+    except faiss_index.DimensionMismatchError:
+        hits = []
+        try:
+            faiss_index.rebuild_from_db(db)
+            hits = faiss_index.search(target_fp.embedding, top_k=top_k, exclude_id=report_id)
+        except Exception:
+            hits = []
 
     # Fallback: brute-force if FAISS empty / cold
     if not hits:
