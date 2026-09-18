@@ -1,0 +1,69 @@
+{
+  "taxonomy_version": "1.0.0",
+  "_sourcing_discipline": {
+    "kind_1": "Directly sourced from a cited external standard with a verifiable reference.",
+    "kind_3": "Team-designed matching architecture for this prototype — NOT claimed as an official ISO 45001 / PSM / DGMS formula."
+  },
+  "primary_classifier": {
+    "name": "IOGP Life-Saving Rules",
+    "kind": 1,
+    "source": "IOGP Report 459 (2018 revision) — 9 Life-Saving Rules",
+    "artifact": "app/data/lsr_knowledge_base.json"
+  },
+  "supporting_vocabularies": [
+    {
+      "name": "energy_categories",
+      "kind": 3,
+      "note": "Team-designed energy/hazard energy bins used by the rule engine. Not a verbatim ISO 45001 Annex A list."
+    },
+    {
+      "name": "hazard_labels",
+      "kind": 3,
+      "note": "Team-designed free-text hazard labels for demo extraction."
+    },
+    {
+      "name": "barrier_types",
+      "kind": 3,
+      "items": [
+        "Isolation / LOTO",
+        "Permit to Work",
+        "Gas Testing",
+        "PPE",
+        "Supervision / Spotter",
+        "Scaffolding / Fall Protection"
+      ],
+      "cross_references": {
+        "Isolation / LOTO": {
+          "possible_correspondence": "OSHA 1910.147 Control of Hazardous Energy (LOTO) / PSM element 'Mechanical Integrity' & safe work practices — analogous only",
+          "claim_level": "analogy_not_derivation"
+        },
+        "Permit to Work": {
+          "possible_correspondence": "Common industry PTW practice; not a numbered ISO 45001 clause in this codebase",
+          "claim_level": "team_designed"
+        }
+      },
+      "explicit_non_claim": "These barrier types are NOT derived from ISO 45001 or OSHA PSM 14-element text. Any ISO/PSM wording in UI tags is a Kind-3 secondary overlay for orientation only."
+    },
+    {
+      "name": "barrier_statuses",
+      "kind": 3,
+      "note": "PRESENT_EFFECTIVE / MISSING / FAILED / BYPASSED / NOT_VERIFIED / UNKNOWN — prototype polarity labels."
+    },
+    {
+      "name": "reason_codes",
+      "kind": 3,
+      "note": "Machine-readable explanation codes emitted by the rule engine."
+    },
+    {
+      "name": "sif_bands",
+      "kind": 3,
+      "note": "HIGH / MEDIUM / LOW / NON_SIF / REVIEW / UNSUPPORTED_LANGUAGE — prototype decision bands, not an official OIL formula."
+    }
+  ],
+  "secondary_overlays": {
+    "name": "standards_tags",
+    "kind": 3,
+    "artifact": "app/services/standards_tags.py",
+    "note": "Optional ISO 45001 / PSM-inspired labels mapped heuristically from Kind-3 fields. They do not replace IOGP LSR as the primary classifier output."
+  }
+}

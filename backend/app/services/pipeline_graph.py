@@ -13,7 +13,7 @@ from typing import TypedDict
 from sqlalchemy.orm import Session
 
 from app.models.report import Report
-from app.nlp.preprocess import detect_language_support, normalize_for_matching
+from app.nlp.preprocess import is_pipeline_supported_language, UNSUPPORTED_LANGUAGE_MESSAGE
 
 _ctx_db: ContextVar[Session | None] = ContextVar("pipeline_db", default=None)
 _ctx_report: ContextVar[Report | None] = ContextVar("pipeline_report", default=None)
@@ -38,19 +38,15 @@ def _build_graph():
     def preprocess_node(state: PipelineState) -> PipelineState:
         stages = list(state.get("stages") or [])
         stages.append("preprocess")
-        lang = detect_language_support(state.get("narrative") or "")
-        matching = (
-            normalize_for_matching(state["narrative"])
-            if lang.script in ("devanagari", "mixed")
-            else (state.get("narrative") or "")
-        )
+        narrative = state.get("narrative") or ""
+        supported = is_pipeline_supported_language(narrative)
         return {
             **state,
             "stages": stages,
-            "language_script": lang.script,
-            "language_supported": lang.supported,
-            "language_reason": lang.reason,
-            "matching_text": matching,
+            "language_script": "latin" if supported else "unsupported",
+            "language_supported": supported,
+            "language_reason": None if supported else UNSUPPORTED_LANGUAGE_MESSAGE,
+            "matching_text": narrative if supported else "",
         }
 
     def extract_node(state: PipelineState) -> PipelineState:

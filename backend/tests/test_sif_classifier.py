@@ -41,9 +41,11 @@ def test_flagship_scenario_is_high_with_evidence(db_session):
 
 def test_never_forces_a_binary_yes_no_output(db_session):
     """The system must never collapse to a bare SIF=YES/NO -- it must always
-    return one of the five defined bands."""
+    return one of the defined bands (including explicit UNSUPPORTED_LANGUAGE)."""
     analysis = _analyze(db_session, "A loose cable tie was found on the walkway; corrected on the spot.")
-    assert analysis.sif_classification.value in ("HIGH", "MEDIUM", "LOW", "NON_SIF", "REVIEW")
+    assert analysis.sif_classification.value in (
+        "HIGH", "MEDIUM", "LOW", "NON_SIF", "REVIEW", "UNSUPPORTED_LANGUAGE",
+    )
 
 
 def test_good_practice_report_is_not_flagged_as_a_failure(db_session):
@@ -73,7 +75,7 @@ def test_risk_score_breakdown_is_transparent_and_labelled_as_prototype(db_sessio
     assert "PROTOTYPE" in analysis.risk_breakdown["_disclaimer"]
     total_components = sum(
         v for k, v in analysis.risk_breakdown.items()
-        if k not in ("total", "_disclaimer", "standards_tags", "language_script", "language_abstention")
+        if k not in ("total", "_disclaimer", "standards_tags", "language_script", "language_abstention", "analysis_status")
         and isinstance(v, (int, float))
     )
     assert abs(total_components - analysis.risk_breakdown["total"]) < 0.5

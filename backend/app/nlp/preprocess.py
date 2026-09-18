@@ -1,14 +1,18 @@
 """
 Text preprocessing (blueprint Pipeline Stage 3).
 
-Supports Latin + Devanagari tokenization. Dense unsupported-script input is
-flagged so the analysis pipeline can abstain to REVIEW instead of returning
-an empty silent analysis.
+Tokenization still recognizes Latin + Devanagari for diagnostics and future
+multilingual *retrieval*. The rule NLP pipeline (entities / barriers / LSR) is
+English-only: use `is_pipeline_supported_language` before analysis so dense
+non-Latin input fails closed with UNSUPPORTED_LANGUAGE instead of a silent
+empty analysis.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from app.core.config import get_settings
 
 _WS_RE = re.compile(r"\s+")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+(?=[A-Z0-9\u0900-\u097F])")
@@ -20,12 +24,15 @@ _CLAUSE_SPLIT_RE = re.compile(
 _TOKEN_RE = re.compile(
     r"[A-Za-z][A-Za-z\-/]*|[\u0900-\u097F]+|\d+(?:\.\d+)?%?"
 )
+_LATIN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z\-/]*")
 _DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 _LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
 
 _PROTECTED_ABBR = ["e.g.", "i.e.", "no.", "approx.", "psi.", "vs."]
 
-# Small Hindi / Romanized safety lexicon overlay (pragmatic prototype, not full NER).
+# Small Hindi / Romanized safety lexicon overlay (kept for optional gloss experiments /
+# future retrieval phases). Devanagari narratives must NOT be treated as supported
+# by the English rule pipeline — see is_pipeline_supported_language().
 HINDI_SAFETY_LEXICON: dict[str, str] = {
     "लोतो": "loto",
     "लोटो": "loto",
@@ -47,6 +54,11 @@ HINDI_SAFETY_LEXICON: dict[str, str] = {
     "ptw": "permit",
     "permit": "permit",
 }
+
+UNSUPPORTED_LANGUAGE_MESSAGE = (
+    "This prototype currently supports English-language input only. "
+    "Automated analysis was not run for this report; manual review is required."
+)
 
 
 @dataclass
@@ -96,44 +108,81 @@ def tokenize(text: str) -> list[str]:
 
 
 def normalize_for_matching(text: str) -> str:
-    """Lowercase Latin; map known Hindi safety terms to English glosses for matching."""
+    """Lowercase Latin; map known Hindi safety terms to English glosses for matching.
+
+    Not used to authorize Devanagari through the English rule pipeline — that gate
+    is `is_pipeline_supported_language`.
+    """
     cleaned = clean_text(text).lower()
     for hi, en in HINDI_SAFETY_LEXICON.items():
         cleaned = cleaned.replace(hi.lower(), f" {en} ")
     return _WS_RE.sub(" ", cleaned).strip()
 
 
+def latin_token_ratio(text: str) -> float:
+    """Share of tokenize() tokens that are ASCII Latin-alphabet (not Devanagari/numbers-only)."""
+    tokens = tokenize(clean_text(text or ""))
+    if not tokens:
+        return 0.0
+    latin = [t for t in tokens if _LATIN_TOKEN_RE.fullmatch(t)]
+    return len(latin) / len(tokens)
+
+
+def is_pipeline_supported_language(narrative: str) -> bool:
+    """Return True iff the narrative is processable by the English-only rule NLP pipeline.
+
+    Detection is script/token based (no langdetect/fasttext). After whitespace
+    collapse, we require that at least PIPELINE_LATIN_TOKEN_RATIO_MIN of tokens
+    from `_TOKEN_RE` are ASCII Latin-alphabet tokens (`_LATIN_TOKEN_RE`).
+
+    Known limitation: Romanized Hindi (Latin script) still PASSES this check even
+    though downstream keyword matching will not find Hindi terms — we intentionally
+    do not attempt Romanized-Hindi semantic understanding here. Multilingual
+    *retrieval* is a separate phase; this gate only protects rule extraction.
+    """
+    text = clean_text(narrative or "")
+    if not text:
+        return False
+    tokens = tokenize(text)
+    if not tokens:
+        return False
+    threshold = get_settings().PIPELINE_LATIN_TOKEN_RATIO_MIN
+    return latin_token_ratio(text) >= threshold
+
+
 def detect_language_support(text: str) -> LanguageSupport:
+    """Diagnostic script labelling. Pipeline authorization uses is_pipeline_supported_language."""
     text = text or ""
     dev_count = len(_DEVANAGARI_RE.findall(text))
     latin_letters = len(_LATIN_LETTER_RE.findall(text))
     tokens = tokenize(text)
-    latin_tokens = [t for t in tokens if _LATIN_LETTER_RE.search(t)]
-    # Expand matching text with lexicon glosses so Hindi-only safety words still yield Latin tokens after normalize
-    normalized = normalize_for_matching(text)
-    gloss_latin = len(_LATIN_LETTER_RE.findall(normalized))
+    latin_tokens = [t for t in tokens if _LATIN_TOKEN_RE.fullmatch(t)]
+    supported = is_pipeline_supported_language(text)
 
     if latin_letters == 0 and dev_count == 0:
-        return LanguageSupport("other", False, 0, 0, "No recognizable Latin or Devanagari script.")
+        return LanguageSupport("other", False, 0, 0, UNSUPPORTED_LANGUAGE_MESSAGE)
     if latin_letters == 0 and dev_count > 0:
-        # Hindi-only: supported if lexicon/normalize yields usable Latin glosses OR enough Devanagari tokens for rules
-        if gloss_latin >= 8 or len(tokenize(normalized)) >= 3:
-            return LanguageSupport("devanagari", True, len(latin_tokens), dev_count, None)
         return LanguageSupport(
             "devanagari",
-            False,
-            0,
+            False,  # English rule pipeline: Devanagari is never supported
+            len(latin_tokens),
             dev_count,
-            "Devanagari narrative with insufficient safety lexicon coverage — routed to human REVIEW.",
+            UNSUPPORTED_LANGUAGE_MESSAGE if not supported else None,
         )
     if latin_letters > 0 and dev_count > 0:
-        return LanguageSupport("mixed", True, len(latin_tokens), dev_count, None)
-    if len(latin_tokens) == 0 and latin_letters < 10:
         return LanguageSupport(
-            "other",
-            False,
-            0,
+            "mixed",
+            supported,
+            len(latin_tokens),
             dev_count,
-            "Unsupported script or empty token stream — routed to human REVIEW.",
+            None if supported else UNSUPPORTED_LANGUAGE_MESSAGE,
+        )
+    if not supported:
+        return LanguageSupport(
+            "other" if len(latin_tokens) == 0 else "latin",
+            False,
+            len(latin_tokens),
+            dev_count,
+            UNSUPPORTED_LANGUAGE_MESSAGE,
         )
     return LanguageSupport("latin", True, len(latin_tokens), 0, None)

@@ -128,7 +128,15 @@ export default function ReviewQueuePage() {
                     <span className="text-[11px] font-semibold text-ink_text-muted">{item.confidence}% confidence</span>
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-[13px] text-ink_text-secondary">{item.narrative}</p>
-                  {item.abstain_reason && <p className="mt-1 text-[11.5px] italic text-risk-review">{item.abstain_reason}</p>}
+                  {item.abstain_reason && (
+                    item.sif_classification === "UNSUPPORTED_LANGUAGE" ? (
+                      <p className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11.5px] font-medium text-amber-950">
+                        {item.abstain_reason}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11.5px] italic text-risk-review">{item.abstain_reason}</p>
+                    )
+                  )}
                   <p className="mt-1 text-[11px] text-ink_text-muted">
                     {item.site || "Unknown site"} · {item.activity || "Unknown activity"} · {item.primary_lsr || "No applicable rule"}
                   </p>

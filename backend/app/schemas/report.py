@@ -117,3 +117,30 @@ class SimilarReportOut(BaseModel):
     source: str = "INTERNAL"  # INTERNAL | PUBLIC_CORPUS
     citation_label: str | None = None
     citation_url: str | None = None
+    excerpt: str | None = None
+    narrative: str | None = None
+
+
+class FieldComparisonOut(BaseModel):
+    field: str
+    shared: bool
+    query_value: str | None = None
+    match_value: str | None = None
+    query_evidence: str | None = None
+    match_evidence: str | None = None
+    reason: str
+
+
+class PrecursorComparisonOut(BaseModel):
+    query_report_id: int
+    match_report_id: int
+    similarity: float | None = None
+    query_narrative: str
+    match_narrative: str
+    match_title: str | None = None
+    match_source: str | None = None
+    citation_label: str | None = None
+    citation_url: str | None = None
+    query_highlights: list[str] = []
+    match_highlights: list[str] = []
+    fields: list[FieldComparisonOut] = []

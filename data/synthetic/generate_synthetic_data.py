@@ -360,29 +360,60 @@ def _random_datetime(months_back: int = 6) -> datetime:
     return now - timedelta(days=days_back, hours=random.randint(0, 23))
 
 
+def _paraphrase_variant(narrative: str, variant: int) -> str:
+    """Genuine surface variants (not a static suffix) so retrieval isn't clone-dominated."""
+    if variant == 0:
+        return narrative
+    prefixes = [
+        "Shift handover note: ",
+        "Supervisor walkdown recorded that ",
+        "Permit close-out comment: ",
+    ]
+    details = [
+        " Event logged near end of day shift.",
+        " Observed during morning toolbox talk follow-up.",
+        " Equipment tag referenced in the PTW package.",
+    ]
+    # Light restructure: prefix + original + distinct trailing detail
+    return f"{prefixes[variant % len(prefixes)]}{narrative.rstrip('.')}{details[variant % len(details)]}"
+
+
+def _base_key(narrative: str) -> str:
+    """Normalize narrative for leakage grouping (strip variant prefixes/suffixes)."""
+    text = narrative
+    for p in ("Shift handover note: ", "Supervisor walkdown recorded that ", "Permit close-out comment: "):
+        if text.startswith(p):
+            text = text[len(p):]
+    for s in (
+        " Event logged near end of day shift.",
+        " Observed during morning toolbox talk follow-up.",
+        " Equipment tag referenced in the PTW package.",
+        " (follow-up observation #2)",
+        " (follow-up observation #3)",
+    ):
+        if text.endswith(s):
+            text = text[: -len(s)]
+    return text.strip().rstrip(".")
+
+
 def generate_rows() -> list[dict]:
     rows = []
     idx = 0
+    # Group rows by base scenario BEFORE split assignment so variants never leak across splits.
+    groups: list[list[dict]] = []
 
     for narrative, activity, location, gold_sif, gold_lsr, report_type in SCENARIOS:
-        # Each base scenario appears 1-3 times at different sites/dates to give
-        # the dashboard, trends, ranking and repeat-precursor detection enough
-        # volume to be meaningful, while keeping narratives varied enough that
-        # they are not literal duplicates (dedupe-safe).
-        # HIGH and MEDIUM get the most repeats -- MEDIUM in particular was left with very
-        # low test-set support in the original dataset (see README Known Limitations) and
-        # needs enough volume that its evaluation metrics mean something.
         repeats = 3 if gold_sif in ("HIGH", "MEDIUM") else \
                   2 if gold_sif in ("NON_SIF", "LOW") else 1
+        group = []
         for r in range(repeats):
             site = SITES[idx % len(SITES)] if r == 0 else random.choice(SITES)
             occurred_at = _random_datetime()
             title = random.choice(TITLES.get(gold_sif, ["Safety observation"]))
-            suffix = "" if r == 0 else f" (follow-up observation #{r + 1})"
-            rows.append({
+            group.append({
                 "report_type": report_type,
                 "title": title,
-                "narrative": narrative + suffix,
+                "narrative": _paraphrase_variant(narrative, r),
                 "site": site,
                 "activity": activity,
                 "location": location,
@@ -390,17 +421,21 @@ def generate_rows() -> list[dict]:
                 "reporter_name": random.choice(REPORTERS),
                 "gold_sif": gold_sif,
                 "gold_lsr": gold_lsr,
+                "_base_key": _base_key(narrative),
             })
             idx += 1
+        groups.append(group)
+
+    random.shuffle(groups)
+    n = len(groups)
+    for i, group in enumerate(groups):
+        frac = i / n
+        split = "train" if frac < 0.6 else ("val" if frac < 0.8 else "test")
+        for row in group:
+            row["split"] = split
+            rows.append(row)
 
     random.shuffle(rows)
-
-    # Deterministic 60/20/20 train/val/test split.
-    n = len(rows)
-    for i, row in enumerate(rows):
-        frac = i / n
-        row["split"] = "train" if frac < 0.6 else ("val" if frac < 0.8 else "test")
-
     return rows
 
 
@@ -411,7 +446,7 @@ def main():
         "occurred_at", "reporter_name", "gold_sif", "gold_lsr", "split",
     ]
     with open(OUT_PATH, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
     print(f"Generated {len(rows)} synthetic reports -> {OUT_PATH}")

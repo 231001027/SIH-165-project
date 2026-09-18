@@ -2,13 +2,44 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api, { extractErrorMessage } from "../services/api";
 import { LoadingState, ErrorState } from "../components/StateViews";
-import { SifBadge, ReasonCodeChip, ReportTypeBadge, SyntheticBadge, ReferenceIncidentBadge } from "../components/Badges";
+import { SifBadge, ReasonCodeChip, ReportTypeBadge, SyntheticBadge, ReferenceIncidentBadge, UnsupportedLanguageBanner } from "../components/Badges";
 import { Card, CardHeader, Button, Textarea, Field } from "../components/ui";
 import BarrierChainDiagram from "../components/BarrierChainDiagram";
+import PrecursorComparisonView from "../components/PrecursorComparisonView";
 import { useAuth } from "../context/AuthContext";
 import {
   IconArrowLeft, IconCheckShield, IconBolt, IconLayers, IconSparkle, IconLink, IconEval, IconAlertTriangle,
 } from "../components/icons";
+
+function highlightNarrative(text, spans) {
+  if (!text) return null;
+  const needles = (spans || []).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!needles.length) return text;
+  const lower = text.toLowerCase();
+  const marks = [];
+  for (const span of needles) {
+    const idx = lower.indexOf(String(span).toLowerCase());
+    if (idx >= 0) marks.push([idx, idx + span.length]);
+  }
+  if (!marks.length) return text;
+  marks.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const [s, e] of marks) {
+    if (!merged.length || s > merged[merged.length - 1][1]) merged.push([s, e]);
+    else merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+  }
+  const parts = [];
+  let cursor = 0;
+  merged.forEach(([s, e], i) => {
+    if (cursor < s) parts.push(text.slice(cursor, s));
+    parts.push(
+      <mark key={i} className="rounded bg-amber-200/80 px-0.5">{text.slice(s, e)}</mark>
+    );
+    cursor = e;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
 
 function Section({ title, children, right, icon }) {
   return (
@@ -31,6 +62,8 @@ export default function ReportDetailPage() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
+  const [comparison, setComparison] = useState(null);
+  const [compareBusy, setCompareBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -78,10 +111,27 @@ export default function ReportDetailPage() {
     }
   }
 
+  async function openComparison(matchId) {
+    setCompareBusy(true);
+    setError("");
+    try {
+      const resp = await api.get(`/api/reports/${id}/compare/${matchId}`);
+      setComparison(resp.data);
+    } catch (err) {
+      setError(extractErrorMessage(err, "Failed to load precursor comparison."));
+    } finally {
+      setCompareBusy(false);
+    }
+  }
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!report) return <LoadingState label="Loading report..." />;
 
   const a = report.analysis;
+  const narrativeSpans = [
+    ...(a?.lsr_evidence || []).map((e) => (typeof e === "string" ? e : e?.text || e?.span || "")).filter(Boolean),
+    ...(a?.barriers || []).map((b) => b.evidence_text).filter(Boolean),
+  ];
 
   return (
     <div>
@@ -111,7 +161,7 @@ export default function ReportDetailPage() {
         <div className="space-y-5 lg:col-span-2">
           <Section title="Original Narrative" icon={<IconLayers className="h-4 w-4" />}>
             <p className="whitespace-pre-wrap rounded-xl bg-surface-muted p-3.5 text-[13.5px] leading-relaxed text-ink_text-primary">
-              {report.narrative}
+              {highlightNarrative(report.narrative, narrativeSpans)}
             </p>
             <div className="mt-3.5 grid grid-cols-3 gap-3">
               <Field label="Site" value={report.site} />
@@ -122,22 +172,29 @@ export default function ReportDetailPage() {
 
           {a ? (
             <>
+              {a.sif_classification === "UNSUPPORTED_LANGUAGE" && (
+                <UnsupportedLanguageBanner message={a.abstain_reason} />
+              )}
+
               <Section
-                title="AI SIF Assessment"
+                title={a.sif_classification === "UNSUPPORTED_LANGUAGE" ? "Analysis status" : "AI SIF Assessment"}
                 icon={<IconAlertTriangle className="h-4 w-4" />}
                 right={
                   <div className="flex items-center gap-2">
                     <SifBadge value={a.sif_classification} size="lg" pulse={a.sif_classification === "HIGH"} />
-                    <span className="text-[13px] font-semibold text-ink_text-secondary">{a.confidence}% confidence</span>
+                    {a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
+                      <span className="text-[13px] font-semibold text-ink_text-secondary">{a.confidence}% confidence</span>
+                    )}
                   </div>
                 }
               >
-                {a.review_required && (
+                {a.review_required && a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
                   <div className="mb-3.5 rounded-lg border border-risk-review/25 bg-risk-review/5 px-3.5 py-2.5 text-[13px] text-risk-review">
                     <p className="font-bold">Flagged for human HSE review.</p>
                     {a.abstain_reason && <p className="mt-0.5 text-[12px] text-risk-review/80">{a.abstain_reason}</p>}
                   </div>
                 )}
+                {a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
                 <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
                   <Field label="Risk Score (0-100, prototype)" value={a.risk_score} />
                   <Field label="Life-Saving Rule" value={a.primary_lsr} />
@@ -146,8 +203,16 @@ export default function ReportDetailPage() {
                   <Field label="Model Version" value={a.model_version} mono />
                   <Field label="Potential Consequence" value={a.potential_consequence} />
                 </div>
+                )}
+                {a.sif_classification === "UNSUPPORTED_LANGUAGE" && (
+                  <p className="text-[13px] text-ink_text-secondary">
+                    Routed to the human review queue. Re-submit an English narrative, or correct fields manually after review.
+                  </p>
+                )}
               </Section>
 
+              {a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
+              <>
               <Section title="Precursor Chain" icon={<IconBolt className="h-4 w-4" />} right={<span className="text-[11px] font-medium text-ink_text-muted">Hazard → Energy → Exposure → Barrier → Consequence</span>}>
                 <BarrierChainDiagram
                   hazard={a.hazard}
@@ -177,7 +242,7 @@ export default function ReportDetailPage() {
               <Section title="Risk Score Breakdown" icon={<IconEval className="h-4 w-4" />}>
                 <div className="space-y-2">
                   {Object.entries(a.risk_breakdown)
-                    .filter(([k, v]) => !["total", "_disclaimer", "standards_tags", "language_script", "language_abstention"].includes(k) && typeof v === "number")
+                    .filter(([k, v]) => !["total", "_disclaimer", "standards_tags", "language_script", "language_abstention", "analysis_status"].includes(k) && typeof v === "number")
                     .map(([k, v]) => (
                       <div key={k} className="flex items-center gap-2.5">
                         <span className="w-36 flex-shrink-0 text-[11.5px] font-semibold text-ink_text-secondary">{k.replace(/_/g, " ")}</span>
@@ -190,7 +255,7 @@ export default function ReportDetailPage() {
                 </div>
                 {Array.isArray(a.risk_breakdown?.standards_tags) && a.risk_breakdown.standards_tags.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-[11px] font-semibold text-ink_text-secondary">Secondary standards tags (ISO 45001 / PSM-inspired overlays — not IOGP replacements)</p>
+                    <p className="text-[11px] font-semibold text-ink_text-secondary">Secondary Kind-3 standards overlays (team-designed ISO/PSM-inspired tags — not Kind-1 derivations; see precursor_taxonomy.json)</p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {a.risk_breakdown.standards_tags.map((tag) => (
                         <span key={tag} className="rounded-md border border-line bg-surface-muted px-2 py-0.5 text-[10.5px] text-ink_text-secondary">{tag}</span>
@@ -200,6 +265,8 @@ export default function ReportDetailPage() {
                 )}
                 <p className="mt-3.5 text-[11px] italic text-ink_text-muted">{a.risk_breakdown._disclaimer}</p>
               </Section>
+              </>
+              )}
             </>
           ) : (
             <Section title="AI Analysis">
@@ -214,51 +281,34 @@ export default function ReportDetailPage() {
               <p className="text-sm text-ink_text-muted">No similar reports found yet.</p>
             ) : (
               <div className="space-y-2">
-                {similar.map((s) =>
-                  s.source === "PUBLIC_CORPUS" ? (
-                    <a
-                      key={s.report_id}
-                      href={s.citation_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-xl border border-accent-200 bg-accent-50/40 p-2.5 transition hover:border-accent-400"
-                    >
-                      <div className="flex items-center justify-between">
-                        <ReferenceIncidentBadge />
-                        <span className="text-[11px] font-bold text-ink_text-muted">{(s.similarity * 100).toFixed(0)}% similar</span>
-                      </div>
-                      <p className="mt-1.5 text-[12.5px] font-bold text-ink_text-primary">{s.citation_label}</p>
-                      <p className="mt-0.5 text-[11px] text-ink_text-secondary">{s.life_saving_rule}</p>
-                      {s.excerpt && (
-                        <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">
-                          “{s.excerpt}”
-                        </p>
-                      )}
-                    </a>
-                  ) : (
-                    <Link
-                      key={s.report_id}
-                      to={`/reports/${s.report_id}`}
-                      className="block rounded-xl border border-line p-2.5 transition hover:border-accent-300 hover:bg-accent-50/30"
-                    >
-                      <div className="flex items-center justify-between">
+                {similar.map((s) => (
+                  <button
+                    type="button"
+                    key={s.report_id}
+                    onClick={() => openComparison(s.report_id)}
+                    disabled={compareBusy}
+                    className="block w-full rounded-xl border border-line p-2.5 text-left transition hover:border-accent-300 hover:bg-accent-50/30 disabled:opacity-60"
+                  >
+                    <div className="flex items-center justify-between">
+                      {s.source === "PUBLIC_CORPUS" ? <ReferenceIncidentBadge /> : (
                         <span className="font-mono text-[12.5px] font-bold text-ink_text-primary">{s.report_code}</span>
-                        <span className="text-[11px] font-bold text-ink_text-muted">{(s.similarity * 100).toFixed(0)}% similar</span>
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-1.5">
-                        {s.sif_potential && <SifBadge value={s.sif_potential} />}
-                        <span className="text-[11px] text-ink_text-secondary">{s.life_saving_rule}</span>
-                      </div>
-                      <p className="mt-0.5 text-[11px] text-ink_text-muted">{s.site} · {s.activity}</p>
-                      {s.excerpt && (
-                        <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">
-                          “{s.excerpt}”
-                        </p>
                       )}
-                    </Link>
-                  )
-                )}
+                      <span className="text-[11px] font-bold text-ink_text-muted">{(s.similarity * 100).toFixed(0)}% similar</span>
+                    </div>
+                    <p className="mt-1.5 text-[12.5px] font-bold text-ink_text-primary">
+                      {s.source === "PUBLIC_CORPUS" ? s.citation_label : s.title}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink_text-secondary">{s.life_saving_rule}</p>
+                    {s.excerpt && (
+                      <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">“{s.excerpt}”</p>
+                    )}
+                    <p className="mt-1 text-[10.5px] font-semibold text-accent-700">Open cited comparison →</p>
+                  </button>
+                ))}
               </div>
+            )}
+            {comparison && (
+              <PrecursorComparisonView comparison={comparison} onClose={() => setComparison(null)} />
             )}
           </Section>
 

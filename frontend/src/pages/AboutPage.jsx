@@ -49,6 +49,7 @@ export default function AboutPage() {
             <>Site/activity ranking is normalized by report volume, not exposure-hours (not available in this dataset).</>,
             <>The bounded LLM explanation layer is optional and disabled by default; the core pipeline works fully offline.</>,
             <>The real-incident reference corpus used for similarity grounding has OSHA FatalFacts / news releases plus DGMS (India) portal-grounded summaries — a small, citation-linked set for RAG excerpts, not a comprehensive historical database.</>,
+            <>The rule NLP pipeline (entities, barriers, Life-Saving Rules) is <strong>English-only</strong>. Narratives that fail the Latin-token language guard receive an explicit <strong>UNSUPPORTED_LANGUAGE</strong> status and are routed to human review — they are never silently classified as NON_SIF / empty analysis. Multilingual retrieval (embeddings) is a separate capability and does not imply multilingual rule extraction.</>,
           ].map((item, i) => (
             <li key={i} className="flex gap-2">
               <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-ink_text-muted" />

@@ -43,7 +43,11 @@ export default function App() {
         <Route path="/reports/new" element={<NewReportPage />} />
         <Route path="/reports/:id" element={<ReportDetailPage />} />
         <Route path="/upload" element={<UploadPage />} />
-        <Route path="/review" element={<ReviewQueuePage />} />
+        <Route path="/review" element={
+          <ProtectedRoute roles={["ADMIN", "HSE_ANALYST"]}>
+            <ReviewQueuePage />
+          </ProtectedRoute>
+        } />
         <Route path="/clusters" element={<ClustersPage />} />
         <Route path="/trends" element={<TrendsPage />} />
         <Route path="/rankings" element={<RankingsPage />} />

@@ -79,6 +79,21 @@ def submit_review(report_id: int, payload: ReviewCreate, db: Session = Depends(g
 
     corrected_fields = {}
     if action == ReviewAction.MODIFY:
+        if not analysis.original_prediction:
+            analysis.original_prediction = {
+                "sif_classification": analysis.sif_classification.value if hasattr(analysis.sif_classification, "value") else str(analysis.sif_classification),
+                "confidence": analysis.confidence,
+                "primary_lsr": analysis.primary_lsr,
+                "hazard": analysis.hazard,
+                "energy_source": analysis.energy_source,
+                "exposure_description": analysis.exposure_description,
+                "exposure_proximity": analysis.exposure_proximity,
+                "activity_extracted": analysis.activity_extracted,
+                "location_extracted": analysis.location_extracted,
+                "potential_consequence": analysis.potential_consequence,
+                "risk_score": analysis.risk_score,
+                "reason_codes": analysis.reason_codes,
+            }
         for field, new_value in (payload.corrected_fields or {}).items():
             if field not in EDITABLE_FIELDS:
                 continue

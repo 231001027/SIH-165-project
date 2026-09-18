@@ -8,6 +8,7 @@ const SIF_STYLES = {
   LOW: "bg-risk-low/10 text-[#8a6a10] border-risk-low/30",
   NON_SIF: "bg-risk-nonsif/10 text-risk-nonsif border-risk-nonsif/25",
   REVIEW: "bg-risk-review/10 text-risk-review border-risk-review/25",
+  UNSUPPORTED_LANGUAGE: "bg-amber-50 text-amber-900 border-amber-300",
 };
 
 const SIF_DOT = {
@@ -16,18 +17,38 @@ const SIF_DOT = {
   LOW: "bg-risk-low",
   NON_SIF: "bg-risk-nonsif",
   REVIEW: "bg-risk-review",
+  UNSUPPORTED_LANGUAGE: "bg-amber-600",
 };
 
 export function SifBadge({ value, size = "md", pulse = false }) {
   const style = SIF_STYLES[value] || "bg-surface-muted text-ink_text-secondary border-line";
   const sizeClass = size === "lg" ? "text-[13px] px-3 py-1" : "text-[11px] px-2 py-0.5";
+  const label =
+    value === "NON_SIF" ? "NON-SIF"
+    : value === "UNSUPPORTED_LANGUAGE" ? "UNSUPPORTED LANGUAGE"
+    : value;
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border font-bold tracking-wide ${style} ${sizeClass}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${SIF_DOT[value] || "bg-ink_text-muted"} ${pulse ? "animate-pulse-ring" : ""}`} />
-      {value === "NON_SIF" ? "NON-SIF" : value}
+      {label}
     </span>
+  );
+}
+
+export function UnsupportedLanguageBanner({ message }) {
+  return (
+    <div
+      role="status"
+      className="rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 text-[13.5px] leading-relaxed text-amber-950"
+    >
+      <p className="font-extrabold tracking-wide text-amber-900">Unsupported language / script</p>
+      <p className="mt-1 font-medium">
+        {message
+          || "This prototype currently supports English-language input only. Automated analysis was not run for this report; manual review is required."}
+      </p>
+    </div>
   );
 }
 

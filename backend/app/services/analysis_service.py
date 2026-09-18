@@ -31,7 +31,10 @@ from app.services.fingerprint_service import build_fingerprint
 from app.services import llm_client
 from app.services.similarity_service import find_similar_reports
 from app.ml import faiss_index
-from app.nlp.preprocess import detect_language_support, normalize_for_matching
+from app.nlp.preprocess import (
+    is_pipeline_supported_language,
+    UNSUPPORTED_LANGUAGE_MESSAGE,
+)
 from app.services.standards_tags import map_standards_tags
 
 settings = get_settings()
@@ -218,6 +221,7 @@ def _potential_consequence(band: str) -> str:
         "LOW": "Minor injury potential",
         "NON_SIF": "No significant injury potential identified",
         "REVIEW": "Undetermined -- pending human HSE review",
+        "UNSUPPORTED_LANGUAGE": "Undetermined -- narrative language/script not supported for automated analysis",
     }.get(band, "Undetermined")
 
 
@@ -231,14 +235,12 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
 def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
     """Core analysis implementation (called by LangGraph nodes as one fused path)."""
     raw_narrative = report.narrative or ""
-    lang = detect_language_support(raw_narrative)
 
-    # Fail closed for unsupported script — never return an empty silent analysis.
-    if not lang.supported:
-        return _persist_language_abstention(db, report, lang.reason or "Unsupported language/script.")
+    # English-only rule NLP gate — fail closed before any entity/barrier/LSR work.
+    if not is_pipeline_supported_language(raw_narrative):
+        return _persist_language_abstention(db, report, UNSUPPORTED_LANGUAGE_MESSAGE)
 
-    # Hindi/Romanized lexicon glosses improve rule matching without changing stored narrative.
-    narrative = normalize_for_matching(raw_narrative) if lang.script in ("devanagari", "mixed") else raw_narrative
+    narrative = raw_narrative
 
     entities = extract_entities(narrative)
     barrier_findings = analyze_barriers(narrative)
@@ -294,8 +296,6 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
         lsr_result.primary,
     )
     risk_breakdown["standards_tags"] = standards
-    if lang.script != "latin":
-        risk_breakdown["language_script"] = lang.script
 
     explanation = build_explanation(
         sif_classification=final_classification,
@@ -357,6 +357,20 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
         potential_consequence=_potential_consequence(final_classification if final_classification != "REVIEW" else rule_band),
         explanation_text=explanation,
         explanation_source=explanation_source,
+        original_prediction={
+            "sif_classification": final_classification,
+            "confidence": confidence,
+            "primary_lsr": lsr_result.primary,
+            "hazard": entities.hazard_label,
+            "energy_source": entities.energy_source,
+            "exposure_description": entities.exposure_description,
+            "exposure_proximity": entities.exposure_proximity,
+            "activity_extracted": activity_extracted,
+            "location_extracted": location_extracted,
+            "potential_consequence": _potential_consequence(final_classification if final_classification != "REVIEW" else rule_band),
+            "risk_score": risk_score,
+            "reason_codes": rule_result.reason_codes,
+        },
         repeat_precursor_count=repeat_count,
     )
     db.add(analysis)
@@ -413,16 +427,21 @@ def _persist_language_abstention(db: Session, report: Report, reason: str) -> An
     if existing:
         db.delete(existing)
         db.flush()
+    message = reason or UNSUPPORTED_LANGUAGE_MESSAGE
     analysis = AnalysisResult(
         report_id=report.id,
         model_version=MODEL_VERSION,
-        sif_classification=SifClassification.REVIEW,
+        sif_classification=SifClassification.UNSUPPORTED_LANGUAGE,
         confidence=0.0,
         review_required=True,
-        abstain_reason=reason,
+        abstain_reason=message,
         risk_score=0.0,
-        risk_breakdown={"language_abstention": True, "_disclaimer": "Language/script unsupported for automated extraction."},
-        reason_codes=["LANGUAGE_UNSUPPORTED"],
+        risk_breakdown={
+            "analysis_status": "UNSUPPORTED_LANGUAGE",
+            "language_abstention": True,
+            "_disclaimer": "Language/script unsupported — automated rule NLP was not run.",
+        },
+        reason_codes=["UNSUPPORTED_LANGUAGE"],
         primary_lsr=NO_APPLICABLE_RULE,
         primary_lsr_confidence=0.0,
         secondary_lsr=None,
@@ -435,11 +454,8 @@ def _persist_language_abstention(db: Session, report: Report, reason: str) -> An
         exposure_proximity="NONE",
         activity_extracted=report.activity.name if report.activity else None,
         location_extracted=report.location,
-        potential_consequence=_potential_consequence("REVIEW"),
-        explanation_text=(
-            "Automated analysis abstained: the narrative appears to use a script or language "
-            "the prototype cannot reliably extract from. Routed to human HSE review."
-        ),
+        potential_consequence=_potential_consequence("UNSUPPORTED_LANGUAGE"),
+        explanation_text=message,
         explanation_source="template",
         repeat_precursor_count=0,
     )

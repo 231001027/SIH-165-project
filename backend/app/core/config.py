@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     CONFIDENCE_MEDIUM: float = 45.0
     CONFIDENCE_LOW: float = 20.0
 
+    # English-only rule NLP gate: fraction of tokenize() tokens that must be
+    # ASCII Latin-alphabet (not Devanagari / other script). Below this ratio the
+    # pipeline abstains with UNSUPPORTED_LANGUAGE instead of returning an empty
+    # silent analysis. 0.70 is a deliberate prototype threshold — high enough
+    # that dense non-Latin narratives fail, low enough that short English
+    # reports with a few numeric tokens still pass.
+    PIPELINE_LATIN_TOKEN_RATIO_MIN: float = 0.70
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -13,6 +13,9 @@ class SifClassification(str, enum.Enum):
     LOW = "LOW"
     NON_SIF = "NON_SIF"
     REVIEW = "REVIEW"
+    # Distinct from REVIEW: narrative failed the English-only rule-pipeline gate.
+    # Not a SIF risk band — automated analysis was not run.
+    UNSUPPORTED_LANGUAGE = "UNSUPPORTED_LANGUAGE"
 
 
 class BarrierStatus(str, enum.Enum):
@@ -61,6 +64,9 @@ class AnalysisResult(Base):
     potential_consequence: Mapped[str | None] = mapped_column(String(500), nullable=True)
     explanation_text: Mapped[str] = mapped_column(Text, default="")
     explanation_source: Mapped[str] = mapped_column(String(30), default="template")  # template | llm_enhanced
+
+    # Snapshot of the model output before any HumanReview MODIFY mutation.
+    original_prediction: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     repeat_precursor_count: Mapped[int] = mapped_column(Integer, default=0)
 

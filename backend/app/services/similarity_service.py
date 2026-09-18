@@ -94,5 +94,6 @@ def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[di
             "citation_label": r.citation_label if is_reference else None,
             "citation_url": r.citation_url if is_reference else None,
             "excerpt": excerpt,
+            "narrative": r.narrative or "",
         })
     return results

@@ -49,8 +49,18 @@ export default function NewReportPage() {
       <PageHeader
         eyebrow="Ingestion"
         title="Submit a Safety Report"
-        description="Enter a free-text UA/UC, near-miss or incident narrative. The AI pipeline analyzes it immediately after submission."
+        description="Enter a free-text UA/UC, near-miss or incident narrative. The AI pipeline analyzes English narratives immediately after submission. Non-English / Devanagari text is flagged UNSUPPORTED_LANGUAGE for manual review."
       />
+
+      <div className="mb-4 max-w-2xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
+        <p className="font-bold">English-language narratives only (prototype)</p>
+        <p className="mt-1 leading-relaxed text-amber-900/90">
+          The rule-based analysis pipeline currently requires predominantly ASCII Latin text.
+          Devanagari or other non-English scripts are not analyzed automatically — you will see an
+          explicit <span className="font-semibold">Unsupported language</span> status and a manual-review
+          requirement instead of a silent wrong SIF band.
+        </p>
+      </div>
 
       <Card className="max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-4">

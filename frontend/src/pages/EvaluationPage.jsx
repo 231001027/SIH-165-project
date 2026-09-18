@@ -87,9 +87,37 @@ export default function EvaluationPage() {
                 ))}
               </tbody>
             </table>
+            {sif.confusion_matrix?.labels?.length > 0 && (
+              <div className="mt-5">
+                <p className="mb-2 text-[10.5px] font-bold uppercase tracking-wide text-ink_text-muted">Confusion matrix (rows=gold, cols=predicted)</p>
+                <div className="overflow-x-auto">
+                  <table className="text-sm">
+                    <thead>
+                      <tr>
+                        <th className="px-2 py-1 text-left text-[10px] text-ink_text-muted"> </th>
+                        {sif.confusion_matrix.labels.map((lab) => (
+                          <th key={lab} className="px-2 py-1 text-center text-[10px] font-bold text-ink_text-muted">{lab}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sif.confusion_matrix.matrix.map((row, i) => (
+                        <tr key={sif.confusion_matrix.labels[i]}>
+                          <td className="px-2 py-1 text-[10px] font-bold text-ink_text-muted">{sif.confusion_matrix.labels[i]}</td>
+                          {row.map((cell, j) => (
+                            <td key={j} className="px-2 py-1 text-center tabular-nums font-semibold text-ink_text-primary">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             <p className="mt-3.5 text-[11.5px] italic text-ink_text-muted">
               Recall on HIGH/MEDIUM and the false-negative rate are treated as the primary safety metrics — a missed SIF
-              precursor is a more serious failure mode than a false alarm.
+              precursor is a more serious failure mode than a false alarm. Figures are from the held-out synthetic gold
+              split after group-by-base-narrative split hygiene — directional, not OIL production KPIs.
             </p>
           </>
         )}

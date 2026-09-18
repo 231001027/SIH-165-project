@@ -13,10 +13,12 @@ from app.models.report import Report, ReportType, ReportSource
 from app.models.user import User
 from app.schemas.report import (
     ReportCreate, ReportOut, ReportListItem, UploadResult, UploadResultRow, SimilarReportOut,
+    PrecursorComparisonOut,
 )
 from app.services.analysis_service import analyze_report
 from app.services.audit_service import log_action
 from app.services.similarity_service import find_similar_reports
+from app.services.comparison_service import compare_precursors
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -310,6 +312,19 @@ def get_fingerprint(report_id: int, db: Session = Depends(get_db), user: User = 
 @router.get("/{report_id}/similar", response_model=list[SimilarReportOut])
 def get_similar(report_id: int, top_k: int = 5, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return find_similar_reports(db, report_id, top_k=top_k)
+
+
+@router.get("/{report_id}/compare/{match_id}", response_model=PrecursorComparisonOut)
+def get_comparison(
+    report_id: int,
+    match_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        return compare_precursors(db, report_id, match_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{report_id}/explanation")
