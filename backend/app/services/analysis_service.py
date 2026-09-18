@@ -29,6 +29,10 @@ from app.ml.classifier import get_classifier, build_feature_vector, LABELS
 from app.services.explanation_service import build_explanation
 from app.services.fingerprint_service import build_fingerprint
 from app.services import llm_client
+from app.services.similarity_service import find_similar_reports
+from app.ml import faiss_index
+from app.nlp.preprocess import detect_language_support, normalize_for_matching
+from app.services.standards_tags import map_standards_tags
 
 settings = get_settings()
 _WEIGHTS_PATH = Path(__file__).resolve().parent.parent / "core" / "risk_weights.json"
@@ -218,7 +222,23 @@ def _potential_consequence(band: str) -> str:
 
 
 def analyze_report(db: Session, report: Report) -> AnalysisResult:
-    narrative = report.narrative
+    """Public entrypoint — LangGraph orchestrates stages; same DB/API contract."""
+    from app.services.pipeline_graph import run_analysis_graph
+
+    return run_analysis_graph(db, report)
+
+
+def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
+    """Core analysis implementation (called by LangGraph nodes as one fused path)."""
+    raw_narrative = report.narrative or ""
+    lang = detect_language_support(raw_narrative)
+
+    # Fail closed for unsupported script — never return an empty silent analysis.
+    if not lang.supported:
+        return _persist_language_abstention(db, report, lang.reason or "Unsupported language/script.")
+
+    # Hindi/Romanized lexicon glosses improve rule matching without changing stored narrative.
+    narrative = normalize_for_matching(raw_narrative) if lang.script in ("devanagari", "mixed") else raw_narrative
 
     entities = extract_entities(narrative)
     barrier_findings = analyze_barriers(narrative)
@@ -232,15 +252,15 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
     provider = get_embedding_provider()
     if not provider.is_ready():
         corpus = [r.narrative for r in db.query(Report).all()]
-        if narrative not in corpus:
-            corpus.append(narrative)
+        if raw_narrative not in corpus:
+            corpus.append(raw_narrative)
         if len(corpus) >= 3:
             provider.fit(corpus)
 
     ml_probs = None
     classifier = get_classifier()
     if provider.is_ready() and classifier.is_ready():
-        embedding = provider.embed_single(narrative)
+        embedding = provider.embed_single(raw_narrative)
         feature_vector = build_feature_vector(embedding, {
             "hazard_energy_component": rule_result.hazard_energy_component,
             "worker_exposure_component": rule_result.worker_exposure_component,
@@ -250,7 +270,7 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
         })
         ml_probs = classifier.predict_proba(feature_vector)
     else:
-        embedding = provider.embed_single(narrative) if provider.is_ready() else [0.0] * 64
+        embedding = provider.embed_single(raw_narrative) if provider.is_ready() else [0.0] * 20
 
     final_classification, confidence, review_required, abstain_reason = _fuse_and_decide(
         rule_band, rule_conf, ml_probs
@@ -268,6 +288,15 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
         )
         worst_barrier_status = worst.status
 
+    standards = map_standards_tags(
+        entities.hazard_label,
+        [bf.barrier_type for bf in barrier_findings],
+        lsr_result.primary,
+    )
+    risk_breakdown["standards_tags"] = standards
+    if lang.script != "latin":
+        risk_breakdown["language_script"] = lang.script
+
     explanation = build_explanation(
         sif_classification=final_classification,
         hazard_label=entities.hazard_label,
@@ -277,6 +306,14 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
         lsr_primary=lsr_result.primary,
         reason_codes=rule_result.reason_codes,
     )
+
+    # RAG: retrieve similar with excerpts for bounded LLM polish (before persisting this FP).
+    similar_for_llm: list[dict] = []
+    try:
+        similar_for_llm = find_similar_reports(db, report.id, top_k=3)
+    except Exception:
+        similar_for_llm = []
+
     explanation, explanation_source = llm_client.enhance_explanation(
         explanation,
         {
@@ -284,9 +321,9 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
             "lsr": lsr_result.primary, "barrier": worst_barrier_type,
             "barrier_status": worst_barrier_status,
         },
+        retrieved_excerpts=similar_for_llm,
     )
 
-    # Replace any existing analysis for this report (re-analysis path).
     existing = db.query(AnalysisResult).filter(AnalysisResult.report_id == report.id).first()
     if existing:
         db.delete(existing)
@@ -347,10 +384,8 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
             confidence=finding.confidence,
         ))
 
-    fingerprint_json = build_fingerprint(
-        report, analysis,
-        [{"name": bf.barrier_type, "status": bf.status, "evidence": bf.evidence_text} for bf in barrier_findings],
-    )
+    barrier_dicts = [{"name": bf.barrier_type, "status": bf.status, "evidence": bf.evidence_text} for bf in barrier_findings]
+    fingerprint_json = build_fingerprint(report, analysis, barrier_dicts, standards_tags=standards)
     existing_fp = db.query(PrecursorFingerprint).filter(PrecursorFingerprint.report_id == report.id).first()
     if existing_fp:
         db.delete(existing_fp)
@@ -364,4 +399,55 @@ def analyze_report(db: Session, report: Report) -> AnalysisResult:
 
     db.commit()
     db.refresh(analysis)
+
+    try:
+        faiss_index.rebuild_from_db(db)
+    except Exception:
+        pass
+
     return analysis
+
+
+def _persist_language_abstention(db: Session, report: Report, reason: str) -> AnalysisResult:
+    existing = db.query(AnalysisResult).filter(AnalysisResult.report_id == report.id).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+    analysis = AnalysisResult(
+        report_id=report.id,
+        model_version=MODEL_VERSION,
+        sif_classification=SifClassification.REVIEW,
+        confidence=0.0,
+        review_required=True,
+        abstain_reason=reason,
+        risk_score=0.0,
+        risk_breakdown={"language_abstention": True, "_disclaimer": "Language/script unsupported for automated extraction."},
+        reason_codes=["LANGUAGE_UNSUPPORTED"],
+        primary_lsr=NO_APPLICABLE_RULE,
+        primary_lsr_confidence=0.0,
+        secondary_lsr=None,
+        secondary_lsr_confidence=None,
+        lsr_evidence=[],
+        hazard=None,
+        energy_source=None,
+        energy_category=None,
+        exposure_description=None,
+        exposure_proximity="NONE",
+        activity_extracted=report.activity.name if report.activity else None,
+        location_extracted=report.location,
+        potential_consequence=_potential_consequence("REVIEW"),
+        explanation_text=(
+            "Automated analysis abstained: the narrative appears to use a script or language "
+            "the prototype cannot reliably extract from. Routed to human HSE review."
+        ),
+        explanation_source="template",
+        repeat_precursor_count=0,
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+    return analysis
+
+
+# Keep a private alias used by older imports/tests if any
+_analyze_report_body = analyze_report_impl

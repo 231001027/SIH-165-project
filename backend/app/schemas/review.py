@@ -32,6 +32,13 @@ class ReviewQueueItem(BaseModel):
     review_required: bool
     abstain_reason: str | None
     primary_lsr: str | None
+    hazard: str | None = None
+    energy_source: str | None = None
+    exposure_description: str | None = None
+    exposure_proximity: str | None = None
+    activity_extracted: str | None = None
+    location_extracted: str | None = None
+    potential_consequence: str | None = None
     site: str | None
     activity: str | None
     occurred_at: datetime

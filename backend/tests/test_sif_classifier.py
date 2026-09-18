@@ -72,7 +72,9 @@ def test_risk_score_breakdown_is_transparent_and_labelled_as_prototype(db_sessio
     assert "_disclaimer" in analysis.risk_breakdown
     assert "PROTOTYPE" in analysis.risk_breakdown["_disclaimer"]
     total_components = sum(
-        v for k, v in analysis.risk_breakdown.items() if k not in ("total", "_disclaimer")
+        v for k, v in analysis.risk_breakdown.items()
+        if k not in ("total", "_disclaimer", "standards_tags", "language_script", "language_abstention")
+        and isinstance(v, (int, float))
     )
     assert abs(total_components - analysis.risk_breakdown["total"]) < 0.5
 

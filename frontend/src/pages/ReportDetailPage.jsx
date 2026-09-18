@@ -177,7 +177,7 @@ export default function ReportDetailPage() {
               <Section title="Risk Score Breakdown" icon={<IconEval className="h-4 w-4" />}>
                 <div className="space-y-2">
                   {Object.entries(a.risk_breakdown)
-                    .filter(([k]) => !["total", "_disclaimer"].includes(k))
+                    .filter(([k, v]) => !["total", "_disclaimer", "standards_tags", "language_script", "language_abstention"].includes(k) && typeof v === "number")
                     .map(([k, v]) => (
                       <div key={k} className="flex items-center gap-2.5">
                         <span className="w-36 flex-shrink-0 text-[11.5px] font-semibold text-ink_text-secondary">{k.replace(/_/g, " ")}</span>
@@ -188,6 +188,16 @@ export default function ReportDetailPage() {
                       </div>
                     ))}
                 </div>
+                {Array.isArray(a.risk_breakdown?.standards_tags) && a.risk_breakdown.standards_tags.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[11px] font-semibold text-ink_text-secondary">Secondary standards tags (ISO 45001 / PSM-inspired overlays — not IOGP replacements)</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {a.risk_breakdown.standards_tags.map((tag) => (
+                        <span key={tag} className="rounded-md border border-line bg-surface-muted px-2 py-0.5 text-[10.5px] text-ink_text-secondary">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <p className="mt-3.5 text-[11px] italic text-ink_text-muted">{a.risk_breakdown._disclaimer}</p>
               </Section>
             </>
@@ -219,6 +229,11 @@ export default function ReportDetailPage() {
                       </div>
                       <p className="mt-1.5 text-[12.5px] font-bold text-ink_text-primary">{s.citation_label}</p>
                       <p className="mt-0.5 text-[11px] text-ink_text-secondary">{s.life_saving_rule}</p>
+                      {s.excerpt && (
+                        <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">
+                          “{s.excerpt}”
+                        </p>
+                      )}
                     </a>
                   ) : (
                     <Link
@@ -235,6 +250,11 @@ export default function ReportDetailPage() {
                         <span className="text-[11px] text-ink_text-secondary">{s.life_saving_rule}</span>
                       </div>
                       <p className="mt-0.5 text-[11px] text-ink_text-muted">{s.site} · {s.activity}</p>
+                      {s.excerpt && (
+                        <p className="mt-1.5 text-[11px] italic leading-snug text-ink_text-secondary">
+                          “{s.excerpt}”
+                        </p>
+                      )}
                     </Link>
                   )
                 )}

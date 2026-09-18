@@ -1,14 +1,8 @@
 # Optional Docker deployment path.
 #
-# The application's default local-dev configuration needs NO Docker and NO
-# Postgres at all -- it runs against a local SQLite file (see backend/.env.example).
-# This compose file is provided for the Postgres/pgvector pilot deployment path
-# described in the blueprint (Part 7.4). Note: the current prototype computes
-# similarity search with local TF-IDF/SVD embeddings + brute-force cosine
-# similarity in Python (see backend/app/ml/embeddings.py) rather than native
-# pgvector ANN operators -- pointing DATABASE_URL at this Postgres instance
-# gives you relational storage on Postgres, but wiring an actual pgvector
-# index is a documented future upgrade (see README "Future Enhancements").
+# Default local-dev still works with SQLite (see backend/.env.example).
+# This compose file runs Postgres + backend + frontend + local Ollama for
+# bounded LLM explanation polish (RAG excerpts + structured fields only).
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -27,6 +21,28 @@ services:
       timeout: 5s
       retries: 10
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - sifguard_ollama:/root/.ollama
+
+  ollama-init:
+    image: curlimages/curl:8.5.0
+    depends_on:
+      - ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Ollama..."
+        until curl -sf http://ollama:11434/api/tags >/dev/null; do sleep 2; done
+        echo "Pulling llama3.2..."
+        curl -sf http://ollama:11434/api/pull -d '{"name":"llama3.2"}'
+        echo "Model llama3.2 ready."
+    restart: "no"
+
   backend:
     build: ./backend
     restart: unless-stopped
@@ -34,13 +50,17 @@ services:
       DATABASE_URL: postgresql+psycopg2://sifguard:sifguard@postgres:5432/sifguard
       JWT_SECRET: change-this-secret-in-production-CHANGE-ME
       FRONTEND_URL: http://localhost:5173
-      LLM_PROVIDER: ""
-      LLM_API_KEY: ""
+      LLM_PROVIDER: ollama
+      LLM_API_KEY: ollama
+      LLM_MODEL: llama3.2
+      OLLAMA_BASE_URL: http://ollama:11434
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_started
     volumes:
       - ./backend:/app
 
@@ -59,3 +79,4 @@ services:
 
 volumes:
   sifguard_pgdata:
+  sifguard_ollama:

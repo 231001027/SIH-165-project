@@ -82,5 +82,26 @@
     "narrative": "Two contract crews were issued confined-space entry permits to perform maintenance inside a connected pair of industrial process towers - one applying flammable resin and combustible sheeting to the interior walls, the other sandblasting in an adjoining section. When the resin failed to cure quickly in cold weather, a worker used an electric heat gun to warm it without obtaining a hot work permit or having a fire extinguisher on hand, and the entry permits' required sections, including designation of an entry supervisor, had not been completed. The heat gun ignited the resin, and because the two towers were treated as separate spaces despite being physically connected, the fire and smoke spread into the second tower, collapsing the support scaffolding and fatally injuring two workers.",
     "lsr_category": "Work Authorization",
     "occurred_year": null
+  },
+  {
+    "citation_label": "DGMS (India) — Directorate General of Mines Safety public portal",
+    "citation_url": "https://www.dgms.gov.in/",
+    "narrative": "In an underground coal mine gallery, a group of workers entered a heading where methane levels had not been re-checked after a temporary stoppage of the auxiliary ventilation duct. No fresh gas testing was recorded on the shift permit before resuming cutting, and the self-rescuer / gas detector protocol was incomplete. A sudden methane enrichment followed by an ignition from an unprotected electrical switch fatally injured one worker and burned two others. Investigators noted missing work authorization for re-entry after ventilation interruption and bypass of the gas-testing barrier.",
+    "lsr_category": "Confined Space",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "DGMS (India) — Directorate General of Mines Safety public portal",
+    "citation_url": "https://www.dgms.gov.in/",
+    "narrative": "During opencast mine haul-road operations, a dump truck driver reversed toward a tipping edge without a spotter after dark. The berm height was below the prescribed standard and edge lighting was offline for maintenance. The truck went over the dump edge, causing a fatal fall. Site inquiry cited failure of driving / vehicle controls, absent spotter barrier, and incomplete work authorization for night dumping at that bench.",
+    "lsr_category": "Driving",
+    "occurred_year": null
+  },
+  {
+    "citation_label": "DGMS (India) — Directorate General of Mines Safety public portal",
+    "citation_url": "https://www.dgms.gov.in/",
+    "narrative": "A fitter began repair work on a surface conveyor drive without applying lockout/tagout on the local isolator. Energy isolation was assumed complete based on a verbal instruction. The conveyor unexpectedly started when another crew restored power elsewhere on the circuit; the fitter suffered fatal crushing injuries at the drum. Investigation found energy isolation not verified, permit-to-work incomplete, and bypassing of the isolation checklist barrier.",
+    "lsr_category": "Energy Isolation",
+    "occurred_year": null
   }
 ]

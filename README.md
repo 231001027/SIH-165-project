@@ -298,20 +298,29 @@ for exactly one purpose: giving a submitted report something real and checkable 
   balance was actively tuned so `MEDIUM` now has ~13 held-out test examples (was 3), though per-class metrics
   on the smallest classes (`LOW`, `MEDIUM`) still carry real sampling noise and should be read as directional,
   not precise.
+- **LLM layer** is optional (Ollama via Docker Compose by default in compose; Anthropic also supported).
+  It only polishes an already-computed explanation using structured fields + retrieved excerpts; it is never
+  a classification authority. If Ollama is down, the API falls back to the template explanation.
+- **Multilingual**: Devanagari tokenization + a small Hindi/Romanized safety lexicon are supported; dense
+  unsupported script still abstains to `REVIEW` (never a silent empty analysis). Full Assamese NER and
+  production multilingual models remain future work.
+- **Retrieval**: FAISS over local TF-IDF+SVD embeddings with cited excerpts on similar matches. Native
+  `pgvector` ANN and Sentence-Transformers remain optional upgrades.
+- **Evaluation metrics** on the synthetic gold set are directional. Embeddings are fit on the **train
+  split only** during seed to reduce test leakage into the vector space. Per-class scores on small
+  classes (`LOW` / `MEDIUM`) still carry sampling noise — do not treat them as production OIL KPIs.
 - **No exposure-hours data**: site/activity ranking is report-volume-normalized, not a true
   exposure-normalized risk rate — the UI states this caveat next to every ranking.
-- **LLM layer is off by default** and only ever polishes an already-computed explanation; it is never a
-  classification authority.
-- **Multilingual support, RAG over external documents, predictive forecasting** are explicitly out of scope
-  for this prototype (see the blueprint's own Tier 3/4 discipline) — not started.
+- **Gold set (~315 synthetic rows)** plus a small public reference corpus (OSHA + DGMS-style portal
+  grounding incidents). Not real OIL production data.
 
 ## 12. Future Enhancements
 
 Swap in a real Sentence-Transformer embedding backend behind the existing `EmbeddingProvider` interface;
-wire native `pgvector` ANN search once on Postgres (the dataset is small enough that brute-force cosine
-similarity is still instant, so this is a scale concern, not a current one); grow the gold set further with
-real multi-annotator agreement; expand the real-incident reference corpus (§9.1) beyond its current 12
-entries; multilingual (Hindi/Assamese) support; private/on-prem LLM hosting evaluation for a real OIL pilot.
+wire native `pgvector` ANN search on Postgres; grow the gold set with multi-annotator agreement; expand
+the public reference corpus further; deepen Hindi/Assamese coverage; private/on-prem LLM hosting for an
+OIL pilot. ISO 45001 / PSM tags are secondary overlays today — a full standards ontology rewrite is not
+in scope for this prototype.
 
 ---
 
@@ -424,9 +433,9 @@ docker compose down
 ## Installation & Running (macOS / Linux, bash)
 
 ```bash
-# Backend
+# Backend (use Python 3.11 or 3.12 — not 3.14)
 cd backend
-python3 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -438,6 +447,10 @@ cd frontend
 npm install
 cp .env.example .env
 npm run dev
+
+# Optional: full stack + local Ollama via Docker
+docker compose up --build
+# (ollama-init pulls llama3.2; backend LLM_PROVIDER=ollama)
 
 # Tests
 cd backend && source venv/bin/activate && python -m pytest tests/ -v

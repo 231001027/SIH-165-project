@@ -48,7 +48,7 @@ export default function AboutPage() {
             <>The 0-100 risk score and confidence bands are our own prototype design decisions — not an official OIL/IOGP formula.</>,
             <>Site/activity ranking is normalized by report volume, not exposure-hours (not available in this dataset).</>,
             <>The bounded LLM explanation layer is optional and disabled by default; the core pipeline works fully offline.</>,
-            <>The real-incident reference corpus used for similarity grounding (see below) has 12 entries across the 9 Life-Saving Rules — a deliberately small, fully-verified starting set, not a comprehensive historical database.</>,
+            <>The real-incident reference corpus used for similarity grounding has OSHA FatalFacts / news releases plus DGMS (India) portal-grounded summaries — a small, citation-linked set for RAG excerpts, not a comprehensive historical database.</>,
           ].map((item, i) => (
             <li key={i} className="flex gap-2">
               <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-ink_text-muted" />

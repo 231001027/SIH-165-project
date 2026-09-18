@@ -171,8 +171,26 @@ def load_reference_corpus(db) -> list[int]:
     return ids
 
 
+def fit_embeddings_train_only(db, meta: dict[int, dict]) -> None:
+    """Fit TF-IDF+SVD on train-split narratives only to avoid test leakage into the embedding space."""
+    from app.ml.embeddings import EmbeddingProvider, get_embedding_provider
+    import app.ml.embeddings as emb_mod
+
+    train_ids = [rid for rid, info in meta.items() if info.get("split") == "train"]
+    narratives = [
+        r.narrative for r in db.query(Report).filter(Report.id.in_(train_ids)).all() if r.narrative
+    ]
+    if len(narratives) < 3:
+        print(f"  Too few train narratives ({len(narratives)}) to fit embeddings.")
+        return
+    provider = EmbeddingProvider()
+    provider.fit(narratives)
+    emb_mod._provider_singleton = provider
+    print(f"  Fitted TF-IDF+SVD embeddings on {len(narratives)} train-split narratives only (test held out).")
+
+
 def run_rule_only_pass(db, report_ids: list[int]):
-    print("Pass 1/2: rule-engine-only analysis (embedding provider fit + baseline classification)...")
+    print("Pass 1/2: rule-engine-only analysis (baseline classification; embeddings already train-fit)...")
     reports = db.query(Report).filter(Report.id.in_(report_ids)).order_by(Report.occurred_at.asc()).all()
     for report in reports:
         analyze_report(db, report)
@@ -278,12 +296,21 @@ def main():
         # rest of the exclusion (KPIs, trends, rankings, clustering).
         report_ids = list(meta.keys()) + reference_ids
 
-        get_embedding_provider()  # will be fit lazily inside analyze_report's first call
+        print("Fitting embedding provider on train split only (no test leakage)...")
+        fit_embeddings_train_only(db, meta)
         run_rule_only_pass(db, report_ids)
         classifier_metrics = train_classifier_from_db(db, meta)
         run_hybrid_pass(db, report_ids)
         load_gold_evaluation_cases(db, meta)
         record_model_version(db, classifier_metrics)
+
+        print("Rebuilding FAISS similarity index...")
+        try:
+            from app.ml import faiss_index
+            n = faiss_index.rebuild_from_db(db)
+            print(f"  FAISS index built with {n} vectors.")
+        except Exception as exc:
+            print(f"  FAISS rebuild skipped: {exc}")
 
         print("Computing precursor clusters...")
         clusters = recompute_clusters(db)

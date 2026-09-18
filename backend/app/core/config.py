@@ -32,9 +32,11 @@ class Settings(BaseSettings):
     # pipeline and falls back to template-based explanations. See
     # app/services/llm_client.py and Part 7.3 of the blueprint ("Offline / API
     # failure strategy").
-    LLM_PROVIDER: str = ""  # "" | "anthropic" | "openai"
+    LLM_PROVIDER: str = ""  # "" | "anthropic" | "ollama"
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "claude-sonnet-5"
+    LLM_MODEL: str = "llama3.2"
+    # Compose service DNS is http://ollama:11434; local non-Docker default below.
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
 
     EMBEDDING_MODEL: str = "tfidf-svd-local"  # prototype embedding backbone
 

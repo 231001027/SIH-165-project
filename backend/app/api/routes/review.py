@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import require_analyst
+from app.api.deps import require_analyst, require_admin
 from app.db.session import get_db
 from app.models.analysis import AnalysisResult, SifClassification
 from app.models.report import Report
@@ -9,6 +9,7 @@ from app.models.review import HumanReview, ReviewAction, Feedback
 from app.models.user import User
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewQueueItem
 from app.services.audit_service import log_action
+from app.services.retrain_service import retrain_classifier_from_feedback
 
 router = APIRouter(prefix="/api/review", tags=["review"])
 
@@ -17,6 +18,22 @@ EDITABLE_FIELDS = {
     "exposure_description", "exposure_proximity", "activity_extracted",
     "location_extracted", "potential_consequence",
 }
+
+
+@router.post("/retrain")
+def retrain_from_feedback(db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Retrain SIF classifier using gold/analysis labels + Feedback corrections."""
+    result = retrain_classifier_from_feedback(db)
+    log_action(
+        db,
+        entity_type="model",
+        entity_id=0,
+        action="RETRAIN_CLASSIFIER",
+        actor=user.email,
+        payload=result,
+    )
+    return result
+
 
 
 @router.get("", response_model=list[ReviewQueueItem])
@@ -35,6 +52,12 @@ def review_queue(db: Session = Depends(get_db), user: User = Depends(require_ana
             narrative=report.narrative, sif_classification=analysis.sif_classification.value,
             confidence=analysis.confidence, review_required=analysis.review_required,
             abstain_reason=analysis.abstain_reason, primary_lsr=analysis.primary_lsr,
+            hazard=analysis.hazard, energy_source=analysis.energy_source,
+            exposure_description=analysis.exposure_description,
+            exposure_proximity=analysis.exposure_proximity,
+            activity_extracted=analysis.activity_extracted,
+            location_extracted=analysis.location_extracted,
+            potential_consequence=analysis.potential_consequence,
             site=report.site.name if report.site else None,
             activity=report.activity.name if report.activity else None,
             occurred_at=report.occurred_at,

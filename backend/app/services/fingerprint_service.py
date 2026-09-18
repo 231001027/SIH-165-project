@@ -4,7 +4,7 @@ clustering, trends and site/activity ranking."""
 from __future__ import annotations
 
 
-def build_fingerprint(report, analysis, barrier_findings: list[dict]) -> dict:
+def build_fingerprint(report, analysis, barrier_findings: list[dict], standards_tags: list[str] | None = None) -> dict:
     return {
         "report_id": report.id,
         "report_code": report.report_code,
@@ -22,5 +22,6 @@ def build_fingerprint(report, analysis, barrier_findings: list[dict]) -> dict:
         "potential_consequence": analysis.potential_consequence,
         "reason_codes": analysis.reason_codes,
         "risk_score": analysis.risk_score,
+        "standards_tags": standards_tags or [],
         "occurred_at": report.occurred_at.isoformat() if report.occurred_at else None,
     }
