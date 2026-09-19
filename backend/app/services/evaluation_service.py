@@ -60,7 +60,10 @@ def evaluate_sif_classification(db: Session) -> dict:
 
     return {
         "insufficient_data": False,
-        "dataset_note": "Computed on the synthetic/demo gold-set evaluation split -- NOT production OIL data.",
+        "dataset_note": (
+            "Computed on the synthetic/demo gold-set evaluation split -- NOT production OIL data. "
+            "Reference corpus (similarity only): 12 REAL_OSHA, 0 REAL_DGMS, 3 SYNTHETIC_DEMO."
+        ),
         "n_cases": len(y_true),
         "per_class": per_class,
         "macro_f1": round(float(sum(f1) / len(f1)), 3) if len(f1) else None,
@@ -99,7 +102,10 @@ def evaluate_lsr_mapping(db: Session) -> dict:
 
     return {
         "insufficient_data": False,
-        "dataset_note": "Computed on the synthetic/demo gold-set evaluation split -- NOT production OIL data.",
+        "dataset_note": (
+            "Computed on the synthetic/demo gold-set evaluation split -- NOT production OIL data. "
+            "Reference corpus (similarity only): 12 REAL_OSHA, 0 REAL_DGMS, 3 SYNTHETIC_DEMO."
+        ),
         "n_cases": total,
         "top1_accuracy": round(correct_top1 / total, 3),
         "per_rule": {

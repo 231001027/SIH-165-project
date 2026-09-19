@@ -7,7 +7,40 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
 
+# Hardcoded escalate strings that must be rejected (analyst must type a real reason).
+FORBIDDEN_ESCALATE_REASONS = frozenset({
+    "",
+    "Escalated for senior HSE attention.",
+    "Escalated by HSE analyst for further attention.",
+})
+
+
 class ReviewAction(str, enum.Enum):
+    """HSE analyst review actions and their effects on AnalysisResult.
+
+    APPROVE
+        Analyst confirms the AI classification is correct as-is.
+        Clears review_required; leaves classification unchanged.
+        Logged as a positive validation signal for evaluation / retraining.
+
+    MODIFY
+        Analyst corrects one or more fields (AI was wrong on those fields).
+        Clears review_required; updates AnalysisResult to the corrected values.
+        original_prediction snapshot (JSON on AnalysisResult) is preserved —
+        populated at analysis time and never overwritten on MODIFY — so the
+        AI's original output is always recoverable (not only via Feedback diffs).
+
+    REJECT
+        Analyst determines this item should NOT be in the review queue at all
+        (duplicate, spam, clearly out of scope). This is NOT "the AI was wrong,
+        revert the classification" — use MODIFY for that.
+        Clears review_required; leaves classification unchanged.
+
+    ESCALATE
+        Routes to senior HSE attention. review_required stays True.
+        Requires a non-empty, non-default analyst-entered reason string.
+    """
+
     APPROVE = "APPROVE"
     MODIFY = "MODIFY"
     REJECT = "REJECT"

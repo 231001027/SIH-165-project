@@ -48,6 +48,8 @@ class Report(Base):
     # rather than an internal report-detail page.
     citation_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     citation_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Provenance for PUBLIC_CORPUS rows: REAL_OSHA | REAL_DGMS | SYNTHETIC_DEMO
+    provenance: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     occurred_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

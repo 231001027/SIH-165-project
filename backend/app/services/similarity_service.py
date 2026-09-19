@@ -34,31 +34,39 @@ def _excerpt_from_narrative(query_narrative: str, match_narrative: str, max_len:
     return best
 
 
-def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[dict]:
-    target_fp = db.query(PrecursorFingerprint).filter(PrecursorFingerprint.report_id == report_id).first()
-    if not target_fp:
+def find_similar_by_embedding(
+    db: Session,
+    embedding: list[float] | np.ndarray,
+    query_narrative: str = "",
+    *,
+    exclude_id: int | None = None,
+    top_k: int = 5,
+) -> list[dict]:
+    """Similarity search using a query embedding (works before this report's FP is persisted)."""
+    if embedding is None:
+        return []
+    target_vec = np.asarray(embedding, dtype=np.float32).reshape(-1)
+    if target_vec.size == 0:
         return []
 
-    target_report = db.query(Report).filter(Report.id == report_id).first()
-    query_narrative = target_report.narrative if target_report else ""
-
-    hits = []
+    hits: list[tuple[int, float]] = []
     try:
-        hits = faiss_index.search(target_fp.embedding, top_k=top_k, exclude_id=report_id)
+        hits = faiss_index.search(target_vec, top_k=top_k, exclude_id=exclude_id)
     except faiss_index.DimensionMismatchError:
         hits = []
         try:
             faiss_index.rebuild_from_db(db)
-            hits = faiss_index.search(target_fp.embedding, top_k=top_k, exclude_id=report_id)
+            hits = faiss_index.search(target_vec, top_k=top_k, exclude_id=exclude_id)
         except Exception:
             hits = []
 
-    # Fallback: brute-force if FAISS empty / cold
     if not hits:
-        all_fps = db.query(PrecursorFingerprint).filter(PrecursorFingerprint.report_id != report_id).all()
+        q = db.query(PrecursorFingerprint)
+        if exclude_id is not None:
+            q = q.filter(PrecursorFingerprint.report_id != exclude_id)
+        all_fps = q.all()
         if not all_fps:
             return []
-        target_vec = np.array(target_fp.embedding, dtype=np.float32)
         corpus_vecs = np.array([fp.embedding for fp in all_fps], dtype=np.float32)
         if corpus_vecs.ndim != 2 or corpus_vecs.shape[1] != target_vec.shape[0]:
             return []
@@ -68,7 +76,6 @@ def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[di
         similarities = (corpus_vecs / norms) @ norm_target
         order = np.argsort(similarities)[::-1][:top_k]
         hits = [(all_fps[i].report_id, float(similarities[i])) for i in order]
-        # Opportunistically rebuild FAISS for next calls
         try:
             faiss_index.rebuild_from_db(db)
         except Exception:
@@ -102,7 +109,23 @@ def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[di
             "source": "PUBLIC_CORPUS" if is_reference else "INTERNAL",
             "citation_label": r.citation_label if is_reference else None,
             "citation_url": r.citation_url if is_reference else None,
+            "provenance": getattr(r, "provenance", None),
             "excerpt": excerpt,
             "narrative": r.narrative or "",
         })
     return results
+
+
+def find_similar_reports(db: Session, report_id: int, top_k: int = 5) -> list[dict]:
+    target_fp = db.query(PrecursorFingerprint).filter(PrecursorFingerprint.report_id == report_id).first()
+    if not target_fp:
+        return []
+    target_report = db.query(Report).filter(Report.id == report_id).first()
+    query_narrative = target_report.narrative if target_report else ""
+    return find_similar_by_embedding(
+        db,
+        target_fp.embedding,
+        query_narrative,
+        exclude_id=report_id,
+        top_k=top_k,
+    )

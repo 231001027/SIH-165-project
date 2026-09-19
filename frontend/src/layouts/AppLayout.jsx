@@ -99,6 +99,7 @@ export default function AppLayout() {
             <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-500">System</p>
             <div className="space-y-0.5">
               {hasRole("ADMIN") && <NavItem to="/audit" label="Audit Trail" icon={IconLock} />}
+              {hasRole("ADMIN") && <NavItem to="/routing" label="Hi-Po Routing" icon={IconCheckShield} />}
               <NavItem to="/about" label="About / LSR Reference" icon={IconInfo} />
             </div>
           </div>
@@ -141,7 +142,7 @@ export default function AppLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1400px] px-6 py-7">
+          <div className="w-full px-6 py-7 xl:px-8 2xl:px-10">
             <Outlet />
           </div>
         </main>

@@ -19,64 +19,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.data.taxonomy_loader import (
+    get_energy_categories,
+    get_energy_source_labels,
+    get_hazard_labels,
+)
 from app.nlp.preprocess import split_sentences
 
-ENERGY_CATEGORIES: dict[str, list[str]] = {
-    "PRESSURE": [
-        "pressure", "pressurized", "pressurised", "residual pressure", "line pressure",
-        "psi", "bar of pressure", "pneumatic",
-    ],
-    "ELECTRICAL": [
-        "electrical", "voltage", "live wire", "energized", "energised", "shock hazard",
-        "electrocution", "live circuit", "high voltage",
-    ],
-    "GRAVITY": [
-        # Deliberately NOT a bare "fall" -- that alone is a documented false-positive
-        # trap (e.g. "a decline/fall in safety scores"), matching the guard-rail this
-        # project must demonstrate. "fell"/"falling" as verbs are far less ambiguous.
-        "height", "elevation", "elevated", "fell", "falling", "dropped from",
-        "scaffold", "ladder", "roof", "platform edge", "fall arrest", "fall protection",
-        "fall from",
-    ],
-    "MECHANICAL": [
-        "rotating equipment", "moving machinery", "mechanical energy", "spring loaded",
-        "rotating", "conveyor", "pinch point", "moving parts", "suspended load",
-        "struck by", "swinging pipe", "swinging load", "crane lift", "lifting operation",
-        "dropped object", "rigging sling", "tag line",
-    ],
-    "CHEMICAL": [
-        "chemical", "toxic", "h2s", "corrosive", "solvent", "flammable", "asphyxiant",
-        "hazardous vapour", "hazardous vapor", "fumes",
-        # Confined-space entry is inherently an atmospheric/asphyxiation hazard under
-        # IOGP's Confined Space rule even when the narrative never names a specific
-        # chemical -- see rules/lsr_engine.py's Confined Space gate, which relies on
-        # this same CHEMICAL category being present. "tank"/"vessel"/"manway" are
-        # treated as OIL-context-specific enough to be low-false-positive-risk.
-        "confined space", "manway", "tank", "vessel",
-    ],
-    "MOTION": [
-        "vehicle", "moving vehicle", "mobile equipment", "forklift", "crane movement",
-        "traffic", "reversing", "driving", "drove", "driver", "excavator",
-    ],
-}
-
-HAZARD_LABELS: dict[str, str] = {
-    "PRESSURE": "Stored / pressurized energy",
-    "ELECTRICAL": "Electrical energy",
-    "GRAVITY": "Gravity / fall hazard",
-    "MECHANICAL": "Mechanical stored / kinetic energy",
-    "CHEMICAL": "Chemical / atmospheric hazard",
-    "MOTION": "Mobile equipment / motion hazard",
-}
-
-ENERGY_SOURCE_LABELS: dict[str, str] = {
-    "PRESSURE": "Pressurized fluid",
-    "ELECTRICAL": "Electrical circuit",
-    "GRAVITY": "Elevation / gravity",
-    "MECHANICAL": "Mechanical stored energy",
-    "CHEMICAL": "Hazardous chemical / atmosphere",
-    "MOTION": "Moving vehicle or mobile equipment",
-}
+# Loaded from precursor_taxonomy.json (single source of truth — do not hardcode here).
+# GRAVITY deliberately omits bare "fall" (false-positive trap: "fall in safety scores").
+ENERGY_CATEGORIES: dict[str, list[str]] = get_energy_categories()
+HAZARD_LABELS: dict[str, str] = get_hazard_labels()
+ENERGY_SOURCE_LABELS: dict[str, str] = get_energy_source_labels()
 
 PROXIMITY_HIGH = [
     "standing under", "positioned at", "beneath", "under the load", "inside the",

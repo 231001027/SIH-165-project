@@ -43,13 +43,14 @@ export default function AboutPage() {
         <ul className="space-y-2 text-[13px] leading-relaxed text-ink_text-secondary">
           {[
             <>All demo data is a team-authored <strong>synthetic</strong> dataset grounded in real IOGP/DEKRA-style patterns — not real OIL production data.</>,
-            <>Entity extraction, the LSR engine and the barrier-negation engine are deterministic, rule-based systems (not trained NER models) — there is no labelled OIL entity-span corpus to train one on yet.</>,
-            <>The SIF classifier is trained on a 315-row gold set; per-class metrics on the smallest classes (LOW, MEDIUM) still carry real sampling noise (see the Evaluation page).</>,
+            <>Entity extraction, the LSR engine and the barrier-negation engine are deterministic, rule-based systems (not trained NER models) — there is no labelled OIL entity-span corpus to train one on yet. Vocabularies load from <code>precursor_taxonomy.json</code>.</>,
+            <>The SIF classifier is trained on a 315-row gold set with <strong>0% train/test base-narrative leakage</strong> (group-level splits); per-class metrics on the smallest classes (LOW, MEDIUM) still carry sampling noise (see the Evaluation page).</>,
             <>The 0-100 risk score and confidence bands are our own prototype design decisions — not an official OIL/IOGP formula.</>,
             <>Site/activity ranking is normalized by report volume, not exposure-hours (not available in this dataset).</>,
             <>The bounded LLM explanation layer is optional and disabled by default; the core pipeline works fully offline.</>,
-            <>The real-incident reference corpus used for similarity grounding has OSHA FatalFacts / news releases plus DGMS (India) portal-grounded summaries — a small, citation-linked set for RAG excerpts, not a comprehensive historical database.</>,
-            <>The rule NLP pipeline (entities, barriers, Life-Saving Rules) is <strong>English-only</strong>. Narratives that fail the Latin-token language guard receive an explicit <strong>UNSUPPORTED_LANGUAGE</strong> status and are routed to human review — they are never silently classified as NON_SIF / empty analysis. Multilingual retrieval (embeddings) is a separate capability and does not imply multilingual rule extraction.</>,
+            <>Reference corpus: <strong>12 REAL_OSHA</strong> citations, <strong>0 REAL_DGMS</strong> (machine-readable DGMS annual-report extracts not available for this prototype), <strong>3 SYNTHETIC_DEMO</strong> India-mining-style illustratives — each comparison shows a provenance badge.</>,
+            <>The rule NLP pipeline (entities, barriers, Life-Saving Rules) is <strong>English-only</strong>. Narratives that fail the Latin-token language guard receive <strong>UNSUPPORTED_LANGUAGE</strong>. <strong>Default retrieval embeddings are multilingual</strong> (<code>paraphrase-multilingual-MiniLM-L12-v2</code>); that does not imply multilingual rule extraction. TF-IDF fallback is visible on <code>/health</code> if the ST model fails to load.</>,
+            <>Analysis is orchestrated by a real LangGraph pipeline (preprocess → extract → barriers/LSR → fuse → retrieve → explain/persist); each node produces inspectable intermediate state.</>,
           ].map((item, i) => (
             <li key={i} className="flex gap-2">
               <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-ink_text-muted" />

@@ -11,6 +11,9 @@ os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
 os.environ["JWT_SECRET"] = "test-secret-key"
 os.environ["LLM_PROVIDER"] = ""
 os.environ["LLM_API_KEY"] = ""
+# Keep most tests offline/fast; cross-lingual suite clears this to assert the
+# Settings default (multilingual MiniLM) without env override.
+os.environ["EMBEDDING_MODEL"] = "tfidf-svd-local"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

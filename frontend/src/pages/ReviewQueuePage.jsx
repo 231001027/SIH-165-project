@@ -43,6 +43,8 @@ export default function ReviewQueuePage() {
   const [modifyReason, setModifyReason] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [retrainMsg, setRetrainMsg] = useState("");
+  const [escalateTarget, setEscalateTarget] = useState(null);
+  const [escalateReason, setEscalateReason] = useState("");
 
   async function load() {
     setError("");
@@ -64,6 +66,8 @@ export default function ReviewQueuePage() {
       await api.post(`/api/review/${reportId}`, { action, ...extra });
       await load();
       setModifyTarget(null);
+      setEscalateTarget(null);
+      setEscalateReason("");
     } catch (err) {
       setError(extractErrorMessage(err, "Review action failed."));
     } finally {
@@ -141,31 +145,78 @@ export default function ReviewQueuePage() {
                     {item.site || "Unknown site"} · {item.activity || "Unknown activity"} · {item.primary_lsr || "No applicable rule"}
                   </p>
                 </div>
-                <div className="flex flex-shrink-0 gap-2">
-                  <Button variant="success" size="sm" disabled={busyId === item.report_id} onClick={() => act(item.report_id, "APPROVE")}>Approve</Button>
+                <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                  <p className="max-w-[280px] text-right text-[10.5px] leading-snug text-ink_text-muted">
+                    Use <strong>Modify</strong> if the AI&apos;s classification was wrong.
+                    Use <strong>Reject</strong> if this report shouldn&apos;t be in the review queue at all
+                    (duplicate / out of scope). <strong>Approve</strong> confirms the AI is correct.
+                  </p>
+                  <div className="flex flex-shrink-0 gap-2">
+                  <Button variant="success" size="sm" disabled={busyId === item.report_id} onClick={() => act(item.report_id, "APPROVE")} title="Confirm AI classification is correct">Approve</Button>
                   <Button
                     variant="primary"
                     size="sm"
                     disabled={busyId === item.report_id}
+                    title="Correct one or more AI fields"
                     onClick={() => {
                       setModifyTarget(item.report_id);
+                      setEscalateTarget(null);
                       setCorrections(blankCorrections(item));
                       setModifyReason("");
                     }}
                   >
                     Modify
                   </Button>
-                  <Button variant="outline" size="sm" disabled={busyId === item.report_id} onClick={() => act(item.report_id, "REJECT")}>Reject</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busyId === item.report_id}
+                    title="Remove from queue without changing classification"
+                    onClick={() => act(item.report_id, "REJECT")}
+                  >
+                    Reject
+                  </Button>
                   <Button
                     variant="danger"
                     size="sm"
                     disabled={busyId === item.report_id}
-                    onClick={() => act(item.report_id, "ESCALATE", { reason: "Escalated for senior HSE attention." })}
+                    title="Escalate to senior HSE — requires a written reason"
+                    onClick={() => {
+                      setEscalateTarget(item.report_id);
+                      setModifyTarget(null);
+                      setEscalateReason("");
+                    }}
                   >
                     Escalate
                   </Button>
+                  </div>
                 </div>
               </div>
+
+              {escalateTarget === item.report_id && (
+                <div className="mt-3.5 rounded-xl border border-risk-high/30 bg-risk-high/5 p-3.5">
+                  <Label>Escalation reason (required)</Label>
+                  <Input
+                    type="text"
+                    value={escalateReason}
+                    onChange={(e) => setEscalateReason(e.target.value)}
+                    placeholder="Why does this need senior HSE attention?"
+                  />
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={!escalateReason.trim() || busyId === item.report_id}
+                      onClick={() =>
+                        act(item.report_id, "ESCALATE", { reason: escalateReason.trim() })
+                      }
+                    >
+                      Submit Escalation
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEscalateTarget(null)}>Cancel</Button>
+                  </div>
+                </div>
+              )}
 
               {modifyTarget === item.report_id && (
                 <div className="mt-3.5 rounded-xl border border-accent-200 bg-accent-50/60 p-3.5">

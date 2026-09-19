@@ -1,4 +1,4 @@
-import { ReferenceIncidentBadge, SifBadge } from "./Badges";
+import { ProvenanceBadge, ReferenceIncidentBadge } from "./Badges";
 
 function highlightText(text, spans) {
   if (!text) return null;
@@ -38,6 +38,9 @@ function highlightText(text, spans) {
 export default function PrecursorComparisonView({ comparison, onClose }) {
   if (!comparison) return null;
 
+  const provenance = comparison.provenance || null;
+  const isSyntheticDemo = provenance === "SYNTHETIC_DEMO";
+
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-accent-200 bg-white p-3.5">
       <div className="flex items-start justify-between gap-2">
@@ -46,7 +49,10 @@ export default function PrecursorComparisonView({ comparison, onClose }) {
           <p className="mt-0.5 text-[12px] text-ink_text-secondary">
             {comparison.match_title || `Report #${comparison.match_report_id}`}
             {comparison.match_source === "PUBLIC_CORPUS" && (
-              <span className="ml-2 inline-block align-middle"><ReferenceIncidentBadge /></span>
+              <span className="ml-2 inline-flex flex-wrap items-center gap-1.5 align-middle">
+                <ReferenceIncidentBadge />
+                <ProvenanceBadge provenance={provenance} />
+              </span>
             )}
           </p>
           {comparison.citation_url && (
@@ -54,10 +60,9 @@ export default function PrecursorComparisonView({ comparison, onClose }) {
               {comparison.citation_label || "Open citation"}
             </a>
           )}
-          {comparison.match_source === "PUBLIC_CORPUS" &&
-            String(comparison.citation_label || "").includes("LIMITATION") && (
+          {isSyntheticDemo && (
             <p className="mt-1.5 max-w-md rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10.5px] font-medium leading-snug text-amber-900">
-              Source limitation: team-authored demo narrative for portal grounding — not a verbatim DGMS/OSHA case extract.
+              Source limitation: team-authored illustrative narrative — not a verbatim DGMS/OSHA case extract.
             </p>
           )}
         </div>

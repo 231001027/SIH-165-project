@@ -51,6 +51,7 @@ class AnalysisOut(BaseModel):
     explanation_source: str
     repeat_precursor_count: int
     original_prediction: dict | None = None
+    oisd_classification: dict | None = None
     barriers: list[BarrierOut] = []
 
     class Config:

@@ -25,26 +25,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.data.taxonomy_loader import get_barrier_keywords
 from app.nlp.preprocess import split_sentences, split_clauses
 
-BARRIER_KEYWORDS: dict[str, list[str]] = {
-    "Isolation / LOTO": [
-        "isolation", "loto", "lockout", "tagout", "lock-out", "tag-out",
-        "zero energy verification", "zero energy",
-    ],
-    "Permit-to-Work": ["permit", "ptw", "work authorization", "work authorisation"],
-    "Guarding": ["guard", "guarding", "machine guard"],
-    "PPE": ["ppe", "personal protective equipment", "hard hat", "harness", "gloves",
-            "safety glasses", "respirator"],
-    "Fall Protection": ["fall arrest", "fall protection", "lanyard", "anchor point"],
-    "Gas Detection": ["gas test", "gas testing", "gas detector", "atmospheric test",
-                       "lel test", "lel meter"],
-    "Exclusion Zone": ["exclusion zone", "barricade", "cordon", "restricted area"],
-    "Communication / Handover": ["handover", "shift handover", "communication protocol",
-                                  "toolbox talk"],
-    "Pressure Relief": ["pressure relief", "relief valve", "psv", "venting"],
-    "Supervision": ["supervision", "supervisor present", "oversight"],
-}
+# Loaded from precursor_taxonomy.json (single source of truth — do not hardcode here).
+BARRIER_KEYWORDS: dict[str, list[str]] = get_barrier_keywords()
 
 # Checked in this order -- first match near the barrier mention wins.
 # Each entry: (status, pattern_tag, [regex fragments])

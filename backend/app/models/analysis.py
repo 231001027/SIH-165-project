@@ -68,6 +68,9 @@ class AnalysisResult(Base):
     # Snapshot of the model output before any HumanReview MODIFY mutation.
     original_prediction: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # OISD-style consequence-probability lens (alongside sif_classification — does not replace it).
+    oisd_classification: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     repeat_precursor_count: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

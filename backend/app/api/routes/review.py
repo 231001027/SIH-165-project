@@ -5,7 +5,7 @@ from app.api.deps import require_analyst, require_admin
 from app.db.session import get_db
 from app.models.analysis import AnalysisResult, SifClassification
 from app.models.report import Report
-from app.models.review import HumanReview, ReviewAction, Feedback
+from app.models.review import HumanReview, ReviewAction, Feedback, FORBIDDEN_ESCALATE_REASONS
 from app.models.user import User
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewQueueItem
 from app.services.audit_service import log_action
@@ -79,6 +79,7 @@ def submit_review(report_id: int, payload: ReviewCreate, db: Session = Depends(g
 
     corrected_fields = {}
     if action == ReviewAction.MODIFY:
+        # Never overwrite an existing original_prediction snapshot (set at analysis time).
         if not analysis.original_prediction:
             analysis.original_prediction = {
                 "sif_classification": analysis.sif_classification.value if hasattr(analysis.sif_classification, "value") else str(analysis.sif_classification),
@@ -112,15 +113,23 @@ def submit_review(report_id: int, payload: ReviewCreate, db: Session = Depends(g
         analysis.review_required = False
 
     elif action == ReviewAction.APPROVE:
+        # Confirm AI classification correct — do not change fields.
         analysis.review_required = False
 
     elif action == ReviewAction.REJECT:
+        # Remove from queue only — NOT a classification correction (use MODIFY for that).
         analysis.review_required = False
 
     elif action == ReviewAction.ESCALATE:
+        reason = (payload.reason or "").strip()
+        if reason in FORBIDDEN_ESCALATE_REASONS or not reason:
+            raise HTTPException(
+                status_code=422,
+                detail="ESCALATE requires a non-empty analyst-entered reason "
+                       "(do not use the default placeholder string).",
+            )
         analysis.review_required = True
-        prefix = "ESCALATED"
-        analysis.abstain_reason = f"{prefix}: {payload.reason or 'Escalated by HSE analyst for further attention.'}"
+        analysis.abstain_reason = f"ESCALATED: {reason}"
 
     review = HumanReview(
         report_id=report_id, reviewer_id=user.id, action=action,
@@ -137,6 +146,12 @@ def submit_review(report_id: int, payload: ReviewCreate, db: Session = Depends(g
 
     db.commit()
     db.refresh(review)
+
+    try:
+        from app.services.notification_service import acknowledge_notifications
+        acknowledge_notifications(db, report_id, action.value)
+    except Exception:
+        pass
 
     log_action(db, "REVIEW", review.id, f"REVIEW_{action.value}", user.email,
                {"report_id": report_id, "corrected_field_count": len(corrected_fields)})

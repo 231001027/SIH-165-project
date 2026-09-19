@@ -52,10 +52,13 @@ Safety Report (free text)
    -> Feedback + Audit Trail
 ```
 
-Every stage in the blueprint's 18-stage pipeline is represented here, implemented as focused Python
-modules under `backend/app/{nlp,rules,ml,services}/` rather than 18 separate microservices — a single
-FastAPI backend + one database is faster to build, easier to run, and easier to defend under questioning
-than premature microservices for a project this size.
+Every stage in the blueprint's 18-stage pipeline is represented here. Analysis is orchestrated by a
+**LangGraph** `StateGraph` (`app/services/pipeline_graph.py`) whose nodes call shared step functions in
+`analysis_service.py`: preprocess (language gate) → extract → barriers/LSR → ml_fuse → retrieve →
+explain_persist. Intermediate nodes write real payloads into graph state (entities, barriers, embeddings,
+similar hits). The sequential fallback uses the **same** step functions — there is one implementation of
+each stage. A single FastAPI backend + one database is faster to run and easier to defend under
+questioning than premature microservices for a project this size.
 
 ### Why a hybrid architecture, not a single LLM call
 
@@ -79,11 +82,16 @@ human HSE review required"* — instead of forcing a confident answer.
 A few pragmatic engineering decisions were made deliberately, and are disclosed here rather than glossed
 over:
 
-- **Default embeddings are TF-IDF + Truncated-SVD (local, `scikit-learn`).**
-  A Sentence-Transformers backend is wired behind the same provider interface and enabled by setting
-  `EMBEDDING_MODEL` to a HuggingFace model id (e.g. `paraphrase-multilingual-MiniLM-L12-v2`) for
-  multilingual retrieval. The hackathon default stays TF-IDF+SVD so install/run stays offline and minutes-fast.
-  Set `EMBEDDING_MODEL=tfidf-svd-local` (default) or a ST model name in `.env`; see `app/ml/embeddings.py`.
+- **Default embeddings are multilingual Sentence-Transformers**
+  (`paraphrase-multilingual-MiniLM-L12-v2`). This is the out-of-the-box default
+  for cross-lingual retrieval. Cold-start downloads model weights (~120MB) on
+  first run — **pre-download before an offline/judged demo**:
+  `python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"`.
+  If the model cannot load, startup logs a warning and falls back to local
+  TF-IDF+SVD (`tfidf-svd-local`), exposed on `GET /health` as
+  `embedding_backend` (never silent). Override deliberately with
+  `EMBEDDING_MODEL=tfidf-svd-local` for fully offline English-only retrieval.
+  Rule NLP remains English-only regardless of the embedding backend.
 - **No spaCy dependency.** Tokenization, sentence-splitting and clause-splitting are pure-Python/regex
   (`app/nlp/preprocess.py`). This avoids a model-download dependency and keeps the negation engine fully
   deterministic and unit-testable.
@@ -198,10 +206,12 @@ fabricated or hidden, per the project's evaluation principle: **recall and false
 HIGH/MEDIUM are treated as the primary safety metric, not overall accuracy**, because a missed SIF
 precursor is a worse failure mode than a false alarm.
 
-Snapshot from the seeded demo dataset (315 synthetic reports, held-out test cases) — regenerate with
-`python seed_data.py --reset` then open `/evaluation` (or `GET /api/evaluation`) to reproduce. Numbers
-below are directional on synthetic data; after a group-by-base-narrative split they can shift vs earlier
-row-shuffle snapshots — always trust the live Evaluation page over a stale README line:
+Snapshot from the seeded demo dataset (315 synthetic reports, held-out test cases, **0% train/test
+base-narrative leakage** — verified by `python scripts/check_data_leakage.py` and
+`tests/test_no_data_leakage.py`). Regenerate with `python seed_data.py --reset` then open `/evaluation`
+(or `GET /api/evaluation`) to reproduce. Numbers below are directional on synthetic data and depend on
+the active embedding backend after seed — **always trust the live Evaluation page** over a stale README
+line:
 
 - HIGH-class recall / precision and false-negative rate on HIGH/MEDIUM: see Evaluation page (primary safety metrics)
 - LSR top-1 accuracy: see Evaluation page
@@ -244,22 +254,20 @@ changes required.
 
 ### 9.1 Real-incident reference corpus (similarity grounding)
 
-`data/reference_corpus/incidents.json` holds 12 **real, independently verifiable** severe-injury/fatality
-incident summaries, each carrying an actual OSHA citation (a FatalFacts bulletin number or a regional news
-release) with the exact URL the content was retrieved from — none of these are synthetic, and none are
-invented. They cover 9 of the 9 IOGP Life-Saving Rule categories. `seed_data.py::load_reference_corpus`
-loads them as `Report` rows tagged `source=PUBLIC_CORPUS`, runs them through the same
-extraction/LSR/barrier pipeline as every other report (so they get a real fingerprint and embedding), and
-`app/services/similarity_service.py` lets them surface as "similar precursor" matches for a submitted
-report — each shown with its citation, not as an internal report link. This directly answers the "your
-similarity search only ever compares against your own synthetic data" critique: it can now surface a match
-against a real, named, historical incident.
+Reference corpus composition (canonical statement — also in `app/data/corpus_provenance.py`):
+**12 REAL_OSHA** (OSHA FatalFacts / news releases with resolvable citation URLs);
+**0 REAL_DGMS** (DGMS annual-report case studies were not available in machine-readable, citable form
+for this prototype — dgms.gov.in / dgms.net attempted; do not treat portal-grounded demos as verbatim
+DGMS extracts); **3 SYNTHETIC_DEMO** (team-authored India-mining-style illustrative narratives, clearly
+labelled). File: `data/reference_corpus/incidents.json`. Each row carries a `provenance` enum tag.
+`seed_data.py::load_reference_corpus` loads them as `Report` rows tagged `source=PUBLIC_CORPUS`, runs them
+through the same extraction/LSR/barrier pipeline, and similarity/comparison UI show a provenance badge
+so judges can see real-cited vs synthetic-demo matches immediately.
 
 **PUBLIC_CORPUS rows are strictly grounding-only** — they are excluded from every KPI, trend, site/activity
 ranking, precursor cluster and the evaluation gold set (see the `Report.source != ReportSource.PUBLIC_CORPUS`
 filters in `app/services/trend_service.py`, `ranking_service.py`, `clustering_service.py` and
-`app/api/routes/dashboard.py`/`reports.py`), and they are never listed on the main Reports page. They exist
-for exactly one purpose: giving a submitted report something real and checkable to be compared against.
+`app/api/routes/dashboard.py`/`reports.py`), and they are never listed on the main Reports page.
 
 ---
 
@@ -300,10 +308,10 @@ for exactly one purpose: giving a submitted report something real and checkable 
 - **Multilingual (split deliberately):** The **rule NLP pipeline is English-only**. Narratives that fail the
   Latin-token language guard receive `UNSUPPORTED_LANGUAGE` (not a silent empty / NON_SIF analysis) and are
   routed to human review. Romanized Hindi may still pass the ASCII gate (documented limitation). Full
-  Assamese NER and multilingual rule extraction remain future work. **Retrieval** can use multilingual
-  Sentence-Transformers when `EMBEDDING_MODEL` is set — that does **not** reopen Devanagari for entity/LSR/SIF
-  rule extraction.
-- **Retrieval**: FAISS over the active embedding provider (default TF-IDF+SVD; optional multilingual ST)
+  Assamese NER and multilingual rule extraction remain future work. **Retrieval defaults to multilingual
+  Sentence-Transformers** (`paraphrase-multilingual-MiniLM-L12-v2`); that does **not** reopen Devanagari for
+  entity/LSR/SIF rule extraction. Fallback to TF-IDF is explicit and visible on `/health`.
+- **Retrieval**: FAISS over the active embedding provider (default multilingual ST; optional `tfidf-svd-local`)
   with cited excerpts and incremental index updates + dimension validation. Native `pgvector` ANN remains
   an optional Postgres upgrade path.
 - **Evaluation metrics** on the synthetic gold set are directional. Embeddings are fit on the **train
@@ -316,12 +324,13 @@ for exactly one purpose: giving a submitted report something real and checkable 
 
 ## 12. Future Enhancements
 
-Default retrieval uses TF-IDF+SVD; multilingual Sentence-Transformers is already behind `EMBEDDING_MODEL`
-for cross-lingual similarity (rule NLP stays English-only). Remaining upgrades: native `pgvector` ANN on
-Postgres; grow the gold set with multi-annotator agreement; expand the public reference corpus with
-verbatim DGMS annual-report extracts; deepen Hindi/Assamese **rule** coverage; private/on-prem LLM hosting
-for an OIL pilot. ISO 45001 / PSM tags are Kind-3 secondary overlays today — a full standards ontology
-rewrite is not in scope for this prototype.
+Default retrieval uses multilingual Sentence-Transformers (`paraphrase-multilingual-MiniLM-L12-v2`);
+set `EMBEDDING_MODEL=tfidf-svd-local` for offline English-only TF-IDF+SVD. Rule NLP stays English-only.
+Remaining upgrades: native `pgvector` ANN on Postgres; grow the gold set with multi-annotator agreement;
+expand the public reference corpus with verbatim DGMS annual-report extracts when machine-readable PDFs
+are available; deepen Hindi/Assamese **rule** coverage; private/on-prem LLM hosting for an OIL pilot.
+ISO 45001 / PSM tags are Kind-3 secondary overlays loaded from `precursor_taxonomy.json` — a full
+standards ontology rewrite is not in scope for this prototype.
 
 ---
 
@@ -372,6 +381,11 @@ copy .env.example .env
 cd frontend
 npm install
 copy .env.example .env
+
+# Pre-download multilingual embedding weights (recommended before offline/judged demos)
+cd ..\backend
+.\venv\Scripts\Activate.ps1
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
 ```
 
 ### B. Seed demo data (users, ~315 synthetic reports, train the classifier, compute clusters)

@@ -87,7 +87,12 @@ export default function NewReportPage() {
               <Label>Narrative *</Label>
               <button
                 type="button"
-                onClick={() => setField("narrative", DEMO_NARRATIVE)}
+                onClick={() => {
+                  setField("narrative", DEMO_NARRATIVE);
+                  setField("site", "Site A (Upstream E&P)");
+                  setField("activity", "Pipeline Maintenance");
+                  setField("title", "Flagship LOTO near-miss demo");
+                }}
                 className="inline-flex items-center gap-1 text-xs font-bold text-accent-700 hover:underline"
               >
                 <IconSparkle className="h-3 w-3" /> Use flagship demo scenario

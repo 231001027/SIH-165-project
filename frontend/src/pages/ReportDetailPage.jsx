@@ -64,6 +64,7 @@ export default function ReportDetailPage() {
   const [reviewMessage, setReviewMessage] = useState("");
   const [comparison, setComparison] = useState(null);
   const [compareBusy, setCompareBusy] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   const load = useCallback(async () => {
     setError("");
@@ -74,6 +75,12 @@ export default function ReportDetailPage() {
       ]);
       setReport(r.data);
       setSimilar(s.data);
+      try {
+        const n = await api.get(`/api/reports/${id}/notifications`);
+        setNotifications(n.data || []);
+      } catch {
+        setNotifications([]);
+      }
     } catch (err) {
       setError(extractErrorMessage(err, "Failed to load report."));
     }
@@ -204,9 +211,48 @@ export default function ReportDetailPage() {
                   <Field label="Potential Consequence" value={a.potential_consequence} />
                 </div>
                 )}
-                {a.original_prediction?.sif_classification &&
+              </Section>
+
+              {a.oisd_classification && a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
+                <Section title="OISD / Hi-Po lens (separate from SIF band)" icon={<IconBolt className="h-4 w-4" />}>
+                  <p className="mb-3 text-[11.5px] text-ink_text-muted">
+                    OISD-style consequence–probability matrix (Kind-3 prototype). Does not replace the AI SIF assessment above.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+                    <Field label="Consequence" value={`${a.oisd_classification.consequence} — ${a.oisd_classification.consequence_level}`} />
+                    <Field label="Probability" value={`${a.oisd_classification.probability} — ${a.oisd_classification.probability_level}`} />
+                    <Field label="OISD band" value={a.oisd_classification.band} />
+                    <Field label="Hi-Po Near Miss" value={a.oisd_classification.is_hipo ? "YES" : "No"} />
+                  </div>
+                  <p className="mt-3 rounded-lg border border-line bg-surface-muted/50 px-3 py-2 text-[12.5px] text-ink_text-secondary">
+                    {a.oisd_classification.rationale}
+                  </p>
+                </Section>
+              )}
+
+              {notifications.length > 0 && (
+                <Section title="Hi-Po / HIGH notifications" icon={<IconCheckShield className="h-4 w-4" />}>
+                  <ul className="space-y-2 text-[12.5px]">
+                    {notifications.map((n) => (
+                      <li key={n.id} className="rounded-lg border border-line px-3 py-2">
+                        <p className="font-semibold text-ink_text-primary">
+                          Notified: {n.assignee_name || "Assignee"} ({n.band_at_trigger})
+                        </p>
+                        <p className="text-ink_text-muted">
+                          Sent {n.sent_at ? new Date(n.sent_at).toLocaleString() : "—"}
+                          {n.acknowledged_at
+                            ? ` · Acknowledged ${new Date(n.acknowledged_at).toLocaleString()} (${n.acknowledged_action})`
+                            : " · Pending acknowledgment"}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {a.original_prediction?.sif_classification &&
                   a.original_prediction.sif_classification !== a.sif_classification && (
-                  <div className="mt-3 rounded-lg border border-line bg-surface-muted/50 px-3.5 py-2.5 text-[12.5px] text-ink_text-secondary">
+                  <div className="rounded-lg border border-line bg-surface-muted/50 px-3.5 py-2.5 text-[12.5px] text-ink_text-secondary">
                     <p className="font-bold text-ink_text-primary">Original model prediction (pre-review)</p>
                     <p className="mt-0.5">
                       Snapshot: <span className="font-semibold">{a.original_prediction.sif_classification}</span>
@@ -217,19 +263,18 @@ export default function ReportDetailPage() {
                     </p>
                   </div>
                 )}
-                {a.original_prediction?.sif_classification &&
+              {a.original_prediction?.sif_classification &&
                   a.original_prediction.sif_classification === a.sif_classification && (
-                  <p className="mt-3 text-[11px] text-ink_text-muted">
+                  <p className="text-[11px] text-ink_text-muted">
                     Original prediction snapshot: {a.original_prediction.sif_classification}
                     {a.original_prediction.confidence != null ? ` (${a.original_prediction.confidence}%)` : ""} — unchanged by review.
                   </p>
                 )}
-                {a.sif_classification === "UNSUPPORTED_LANGUAGE" && (
+              {a.sif_classification === "UNSUPPORTED_LANGUAGE" && (
                   <p className="text-[13px] text-ink_text-secondary">
                     Routed to the human review queue. Re-submit an English narrative, or correct fields manually after review.
                   </p>
                 )}
-              </Section>
 
               {a.sif_classification !== "UNSUPPORTED_LANGUAGE" && (
               <>
@@ -339,17 +384,29 @@ export default function ReportDetailPage() {
 
           {hasRole("ADMIN", "HSE_ANALYST") && (
             <Section title="Human Review" icon={<IconCheckShield className="h-4 w-4" />}>
+              <p className="mb-2 text-[11px] leading-snug text-ink_text-muted">
+                Use <strong>Modify in Queue</strong> if the AI was wrong.
+                Use <strong>Reject</strong> only if this item shouldn&apos;t be in the queue.
+                <strong> Escalate</strong> requires a written reason below.
+              </p>
               <Textarea
                 rows={2}
                 value={reviewReason}
                 onChange={(e) => setReviewReason(e.target.value)}
-                placeholder="Optional reason / notes..."
+                placeholder="Reason / notes (required for Escalate)..."
                 className="mb-3"
               />
               <div className="grid grid-cols-2 gap-2">
                 <Button variant="success" size="sm" disabled={reviewSubmitting} onClick={() => handleReview("APPROVE")}>Approve</Button>
                 <Button variant="outline" size="sm" disabled={reviewSubmitting} onClick={() => handleReview("REJECT")}>Reject</Button>
-                <Button variant="danger" size="sm" disabled={reviewSubmitting} onClick={() => handleReview("ESCALATE")}>Escalate</Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={reviewSubmitting || !reviewReason.trim()}
+                  onClick={() => handleReview("ESCALATE")}
+                >
+                  Escalate
+                </Button>
                 <Button as={Link} to="/review" variant="ghost" size="sm">Modify in Queue</Button>
               </div>
               {reviewMessage && <p className="mt-2.5 text-xs text-ink_text-muted">{reviewMessage}</p>}

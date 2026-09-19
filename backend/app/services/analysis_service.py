@@ -1,18 +1,16 @@
 """
 The core orchestrator: runs every pipeline stage (blueprint Stages 3-11) for
-one report and persists the result. This is the single place the rule
-engine, the ML classifier, the LSR engine and the barrier engine are fused
-into one final, explainable SIF classification -- see `_fuse_and_decide` for
-the abstention logic (blueprint Part 3.2).
+one report and persists the result. Pipeline steps are independently callable
+so LangGraph nodes and the non-graph fallback share one implementation.
 """
 from __future__ import annotations
 
 import json
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
-import numpy as np
-from sqlalchemy import and_, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -20,22 +18,23 @@ from app.models.analysis import (
     AnalysisResult, ReportEntity, ReportBarrier, PrecursorFingerprint, SifClassification,
 )
 from app.models.report import Report
-from app.nlp.entity_extraction import extract_entities
-from app.nlp.negation import analyze_barriers
+from app.nlp.entity_extraction import extract_entities, ExtractedEntities
+from app.nlp.negation import analyze_barriers, BarrierFinding
 from app.rules.lsr_engine import classify_lsr, NO_APPLICABLE_RULE
 from app.rules.sif_rules import run_rule_engine
 from app.ml.embeddings import get_embedding_provider
-from app.ml.classifier import get_classifier, build_feature_vector, LABELS
+from app.ml.classifier import get_classifier, build_feature_vector
 from app.services.explanation_service import build_explanation
 from app.services.fingerprint_service import build_fingerprint
 from app.services import llm_client
-from app.services.similarity_service import find_similar_reports
+from app.services.similarity_service import find_similar_by_embedding
 from app.ml import faiss_index
 from app.nlp.preprocess import (
     is_pipeline_supported_language,
     UNSUPPORTED_LANGUAGE_MESSAGE,
 )
 from app.services.standards_tags import map_standards_tags
+from app.services.oisd_matrix import classify_from_pipeline
 
 settings = get_settings()
 _WEIGHTS_PATH = Path(__file__).resolve().parent.parent / "core" / "risk_weights.json"
@@ -52,7 +51,7 @@ def ensure_embedding_provider_fitted(db: Session) -> None:
         return
     narratives = [r.narrative for r in db.query(Report).all()]
     if len(narratives) < 3:
-        return  # not enough corpus yet; caller (single-report path) handles this itself
+        return
     provider.fit(narratives)
 
 
@@ -72,10 +71,6 @@ def _compute_risk_score(rule_result) -> tuple[float, dict]:
 
 
 def _rule_band(risk_score: float, entities, barrier_failure_component: float) -> str:
-    # A report can show genuine SIF-precursor risk purely from a barrier/process
-    # failure (e.g. "maintenance began without a valid work permit") even when no
-    # energy-category keyword was extracted -- so barrier evidence, not just
-    # hazard/exposure evidence, must be able to keep a report out of NON_SIF.
     has_any_signal = (
         bool(entities.energy_categories)
         or entities.exposure_proximity != "NONE"
@@ -94,17 +89,7 @@ def _rule_band(risk_score: float, entities, barrier_failure_component: float) ->
 
 
 def _rule_confidence(risk_score: float, band: str, evidence_confidence: float) -> float:
-    """Confidence that the BAND ITSELF is correct -- not a measure of how
-    severe/risky the situation is. A calm, unambiguous NON_SIF report (little
-    or no hazard evidence, nothing contradictory) should be classified with
-    HIGH confidence; a report with only one weak, isolated signal should not,
-    regardless of which band it lands in. `evidence_confidence` is the rule
-    engine's own evidence-density signal (app.rules.sif_rules.RuleEngineResult
-    .rule_confidence, 0-100: how many independent risk signals actually
-    fired)."""
     if band == "NON_SIF":
-        # Confidence in "nothing hazardous here" grows as risk_score shrinks
-        # toward zero, independent of the (deliberately sparse) evidence count.
         return round(min(97.0, max(55.0, 95 - risk_score * 2.2)), 1)
     if band == "HIGH":
         bands = _RISK_CONFIG["bands"]
@@ -120,19 +105,6 @@ def _rule_confidence(risk_score: float, band: str, evidence_confidence: float) -
 
 
 def _fuse_and_decide(rule_band: str, rule_conf: float, ml_probs: dict[str, float] | None):
-    """Returns (final_classification, confidence, review_required, abstain_reason).
-
-    Design note: the deterministic rule engine is treated as the primary,
-    always-available "safety baseline" (blueprint Part 5.4) -- its confidence
-    drives the outcome. The ML classifier acts as a MODIFIER (a confirming
-    bonus or a disagreement penalty), not an equally-weighted average partner.
-    This matters in practice: with only ~100 hackathon-scale training rows,
-    the classifier is deliberately regularized to avoid overfitting (see
-    app/ml/classifier.py), which naturally flattens its predicted
-    probabilities (e.g. a 0.35 argmax instead of 0.90). A 50/50 average with
-    such a naturally-flatter signal would drag down confidence -- and trigger
-    abstention -- even when the two layers agree on the classification, which
-    is not the intended abstention behaviour."""
     if not ml_probs:
         final_band = rule_band
         confidence = rule_conf
@@ -143,26 +115,17 @@ def _fuse_and_decide(rule_band: str, rule_conf: float, ml_probs: dict[str, float
         agreement_gap = abs(_ORDINAL.get(rule_band, 0) - _ORDINAL.get(ml_band, 0))
 
         if agreement_gap == 0:
-            # ML confirms the rule engine: small bonus, scaled by how much the
-            # classifier's own probability exceeds the 4-class uniform baseline (25%).
             final_band = rule_band
             confirmation_bonus = max(0.0, min(10.0, (ml_conf - 25) * 0.25))
             confidence = round(min(100.0, rule_conf + confirmation_bonus), 1)
         elif agreement_gap == 1:
-            # Adjacent disagreement: bias toward the higher-severity band
-            # (recall-first principle, blueprint Part 8.1) but discount confidence.
             final_band = rule_band if _ORDINAL[rule_band] >= _ORDINAL[ml_band] else ml_band
             confidence = round(max(0.0, rule_conf - 12), 1)
         elif rule_conf >= 70:
-            # The rule engine is the deterministic, auditable safety baseline
-            # (blueprint Part 5.4): if it is itself highly confident, a sharp
-            # disagreement from the ML layer is treated as the ML layer being
-            # wrong, not as grounds to hide the rule engine's evidence-backed
-            # result -- it is still flagged for a human to glance at, though.
             final_band = rule_band
             confidence = round(max(0.0, rule_conf - 15), 1)
         else:
-            final_band = rule_band  # placeholder; overridden to REVIEW below
+            final_band = rule_band
             confidence = round(max(0.0, min(rule_conf, ml_conf) - 10), 1)
 
     review_required = False
@@ -197,7 +160,6 @@ def _fuse_and_decide(rule_band: str, rule_conf: float, ml_probs: dict[str, float
 def _count_repeat_precursors(db: Session, report: Report, lsr_primary: str) -> int:
     if not report.site_id or lsr_primary == NO_APPLICABLE_RULE:
         return 0
-    # Trailing 90-day window per blueprint Part 2.4 RepeatPrecursor component.
     window_start = report.occurred_at - timedelta(days=90)
     q = (
         db.query(func.count(AnalysisResult.id))
@@ -225,26 +187,72 @@ def _potential_consequence(band: str) -> str:
     }.get(band, "Undetermined")
 
 
-def analyze_report(db: Session, report: Report) -> AnalysisResult:
-    """Public entrypoint — LangGraph orchestrates stages; same DB/API contract."""
-    from app.services.pipeline_graph import run_analysis_graph
-
-    return run_analysis_graph(db, report)
+def _zero_embedding(provider) -> list[float]:
+    dim = getattr(provider, "dimension", None) or 20
+    return [0.0] * int(dim)
 
 
-def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
-    """Core analysis implementation (called by LangGraph nodes as one fused path)."""
-    raw_narrative = report.narrative or ""
+# ---------------------------------------------------------------------------
+# Shared pipeline steps (used by LangGraph nodes AND the sequential fallback)
+# ---------------------------------------------------------------------------
 
-    # English-only rule NLP gate — fail closed before any entity/barrier/LSR work.
-    if not is_pipeline_supported_language(raw_narrative):
-        return _persist_language_abstention(db, report, UNSUPPORTED_LANGUAGE_MESSAGE)
+def step_preprocess(report: Report) -> dict[str, Any]:
+    """Language gate + narrative preparation. Sets language_supported / early halt."""
+    raw = report.narrative or ""
+    supported = is_pipeline_supported_language(raw)
+    return {
+        "report_id": report.id,
+        "narrative": raw,
+        "language_supported": supported,
+        "language_reason": None if supported else UNSUPPORTED_LANGUAGE_MESSAGE,
+        "matching_text": raw if supported else "",
+        "stages": ["preprocess"],
+        "halt": not supported,
+    }
 
-    narrative = raw_narrative
 
-    entities = extract_entities(narrative)
+def step_extract(state: dict[str, Any]) -> dict[str, Any]:
+    if state.get("halt"):
+        return state
+    entities = extract_entities(state["narrative"])
+    stages = list(state.get("stages") or []) + ["extract_entities"]
+    return {
+        **state,
+        "stages": stages,
+        "entities": entities,
+        "hazard_label": entities.hazard_label,
+        "energy_categories": list(entities.energy_categories),
+    }
+
+
+def step_barriers_lsr(state: dict[str, Any]) -> dict[str, Any]:
+    if state.get("halt"):
+        return state
+    entities: ExtractedEntities = state["entities"]
+    narrative = state["narrative"]
     barrier_findings = analyze_barriers(narrative)
     lsr_result = classify_lsr(narrative, entities)
+    stages = list(state.get("stages") or []) + ["barriers_lsr_rules"]
+    return {
+        **state,
+        "stages": stages,
+        "barrier_findings": barrier_findings,
+        "barrier_types": [bf.barrier_type for bf in barrier_findings],
+        "lsr_primary": lsr_result.primary,
+        "lsr_result": lsr_result,
+    }
+
+
+def step_ml_fuse(db: Session, report: Report, state: dict[str, Any]) -> dict[str, Any]:
+    """Rules + risk + embed + ML fuse. Does NOT persist fingerprint or upsert FAISS."""
+    if state.get("halt"):
+        return state
+
+    entities: ExtractedEntities = state["entities"]
+    barrier_findings: list[BarrierFinding] = state["barrier_findings"]
+    lsr_result = state["lsr_result"]
+    raw_narrative = state["narrative"]
+
     repeat_count = _count_repeat_precursors(db, report, lsr_result.primary)
     rule_result = run_rule_engine(entities, barrier_findings, lsr_result.primary, repeat_count)
     risk_score, risk_breakdown = _compute_risk_score(rule_result)
@@ -264,17 +272,13 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             if raw_narrative not in corpus:
                 corpus.append(raw_narrative)
             if len(corpus) >= 3:
-                # In-memory only — never clobber seed-fitted on-disk artifacts
-                # with a tiny cold-start corpus (would shrink SVD dims and break
-                # the classifier feature width).
                 provider.fit(corpus, persist=False)
 
     ml_probs = None
-    classifier = get_classifier()
     embedding = None
     if provider.is_ready():
         embedding = provider.embed_single(raw_narrative)
-    if provider.is_ready() and classifier.is_ready() and embedding is not None:
+    if provider.is_ready() and get_classifier().is_ready() and embedding is not None:
         feature_vector = build_feature_vector(embedding, {
             "hazard_energy_component": rule_result.hazard_energy_component,
             "worker_exposure_component": rule_result.worker_exposure_component,
@@ -282,11 +286,12 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             "activity_criticality_component": rule_result.activity_criticality_component,
             "repeat_precursor_component": rule_result.repeat_precursor_component,
         })
+        classifier = get_classifier()
         expected = getattr(classifier.model, "n_features_in_", None)
         if expected is None or feature_vector.shape[0] == expected:
             ml_probs = classifier.predict_proba(feature_vector)
     if embedding is None:
-        embedding = [0.0] * 20
+        embedding = _zero_embedding(provider)
 
     final_classification, confidence, review_required, abstain_reason = _fuse_and_decide(
         rule_band, rule_conf, ml_probs
@@ -311,6 +316,71 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
     )
     risk_breakdown["standards_tags"] = standards
 
+    stages = list(state.get("stages") or []) + ["ml_fuse"]
+    return {
+        **state,
+        "stages": stages,
+        "repeat_count": repeat_count,
+        "rule_result": rule_result,
+        "risk_score": risk_score,
+        "risk_breakdown": risk_breakdown,
+        "rule_band": rule_band,
+        "embedding": embedding if isinstance(embedding, list) else list(embedding),
+        "ml_probs": ml_probs,
+        "final_classification": final_classification,
+        "confidence": confidence,
+        "review_required": review_required,
+        "abstain_reason": abstain_reason,
+        "worst_barrier_type": worst_barrier_type,
+        "worst_barrier_status": worst_barrier_status,
+        "standards_tags": standards,
+    }
+
+
+def step_retrieve(db: Session, report: Report, state: dict[str, Any]) -> dict[str, Any]:
+    """Retrieve similar reports using this report's embedding BEFORE fingerprint persist."""
+    if state.get("halt"):
+        return {**state, "stages": list(state.get("stages") or []) + ["faiss_retrieve"], "similar_reports": []}
+
+    similar: list[dict] = []
+    try:
+        similar = find_similar_by_embedding(
+            db,
+            state.get("embedding") or [],
+            state.get("narrative") or "",
+            exclude_id=report.id,
+            top_k=5,
+        )
+    except Exception:
+        similar = []
+
+    stages = list(state.get("stages") or []) + ["faiss_retrieve"]
+    return {**state, "stages": stages, "similar_reports": similar}
+
+
+def step_explain_persist(db: Session, report: Report, state: dict[str, Any]) -> AnalysisResult:
+    """Build explanation (with retrieved excerpts), persist analysis + fingerprint, FAISS upsert."""
+    if state.get("halt"):
+        return _persist_language_abstention(db, report, state.get("language_reason") or UNSUPPORTED_LANGUAGE_MESSAGE)
+
+    entities: ExtractedEntities = state["entities"]
+    barrier_findings: list[BarrierFinding] = state["barrier_findings"]
+    lsr_result = state["lsr_result"]
+    rule_result = state["rule_result"]
+    final_classification = state["final_classification"]
+    confidence = state["confidence"]
+    review_required = state["review_required"]
+    abstain_reason = state["abstain_reason"]
+    risk_score = state["risk_score"]
+    risk_breakdown = state["risk_breakdown"]
+    rule_band = state["rule_band"]
+    embedding = state["embedding"]
+    worst_barrier_type = state["worst_barrier_type"]
+    worst_barrier_status = state["worst_barrier_status"]
+    standards = state["standards_tags"]
+    similar_for_llm = state.get("similar_reports") or []
+    repeat_count = state["repeat_count"]
+
     explanation = build_explanation(
         sif_classification=final_classification,
         hazard_label=entities.hazard_label,
@@ -320,14 +390,6 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
         lsr_primary=lsr_result.primary,
         reason_codes=rule_result.reason_codes,
     )
-
-    # RAG: retrieve similar with excerpts for bounded LLM polish (before persisting this FP).
-    similar_for_llm: list[dict] = []
-    try:
-        similar_for_llm = find_similar_reports(db, report.id, top_k=3)
-    except Exception:
-        similar_for_llm = []
-
     explanation, explanation_source = llm_client.enhance_explanation(
         explanation,
         {
@@ -335,7 +397,7 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             "lsr": lsr_result.primary, "barrier": worst_barrier_type,
             "barrier_status": worst_barrier_status,
         },
-        retrieved_excerpts=similar_for_llm,
+        retrieved_excerpts=similar_for_llm[:3],
     )
 
     existing = db.query(AnalysisResult).filter(AnalysisResult.report_id == report.id).first()
@@ -345,6 +407,17 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
 
     activity_extracted = (report.activity.name if report.activity else None) or entities.activity_guess
     location_extracted = report.location or entities.location_guess
+    potential = _potential_consequence(
+        final_classification if final_classification != "REVIEW" else rule_band
+    )
+
+    oisd_classification = classify_from_pipeline(
+        energy_categories=list(entities.energy_categories or []),
+        exposure_proximity=entities.exposure_proximity,
+        barrier_findings=barrier_findings,
+        repeat_precursor_count=repeat_count,
+        sif_classification=final_classification,
+    )
 
     analysis = AnalysisResult(
         report_id=report.id,
@@ -368,7 +441,7 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
         exposure_proximity=entities.exposure_proximity,
         activity_extracted=activity_extracted,
         location_extracted=location_extracted,
-        potential_consequence=_potential_consequence(final_classification if final_classification != "REVIEW" else rule_band),
+        potential_consequence=potential,
         explanation_text=explanation,
         explanation_source=explanation_source,
         original_prediction={
@@ -381,27 +454,36 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             "exposure_proximity": entities.exposure_proximity,
             "activity_extracted": activity_extracted,
             "location_extracted": location_extracted,
-            "potential_consequence": _potential_consequence(final_classification if final_classification != "REVIEW" else rule_band),
+            "potential_consequence": potential,
             "risk_score": risk_score,
             "reason_codes": rule_result.reason_codes,
         },
+        oisd_classification=oisd_classification,
         repeat_precursor_count=repeat_count,
     )
     db.add(analysis)
     db.flush()
 
     for span in entities.evidence_spans[:5]:
-        db.add(ReportEntity(analysis_id=analysis.id, entity_type="EXPOSURE_EVIDENCE",
-                             entity_text=span, evidence_span=span, confidence=0.8))
+        db.add(ReportEntity(
+            analysis_id=analysis.id, entity_type="EXPOSURE_EVIDENCE",
+            entity_text=span, evidence_span=span, confidence=0.8,
+        ))
     if entities.hazard_label:
-        db.add(ReportEntity(analysis_id=analysis.id, entity_type="HAZARD",
-                             entity_text=entities.hazard_label, confidence=0.8))
+        db.add(ReportEntity(
+            analysis_id=analysis.id, entity_type="HAZARD",
+            entity_text=entities.hazard_label, confidence=0.8,
+        ))
     if entities.activity_guess:
-        db.add(ReportEntity(analysis_id=analysis.id, entity_type="ACTIVITY",
-                             entity_text=entities.activity_guess, confidence=0.6))
+        db.add(ReportEntity(
+            analysis_id=analysis.id, entity_type="ACTIVITY",
+            entity_text=entities.activity_guess, confidence=0.6,
+        ))
     if entities.location_guess:
-        db.add(ReportEntity(analysis_id=analysis.id, entity_type="LOCATION",
-                             entity_text=entities.location_guess, confidence=0.5))
+        db.add(ReportEntity(
+            analysis_id=analysis.id, entity_type="LOCATION",
+            entity_text=entities.location_guess, confidence=0.5,
+        ))
 
     for finding in barrier_findings:
         db.add(ReportBarrier(
@@ -412,7 +494,10 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
             confidence=finding.confidence,
         ))
 
-    barrier_dicts = [{"name": bf.barrier_type, "status": bf.status, "evidence": bf.evidence_text} for bf in barrier_findings]
+    barrier_dicts = [
+        {"name": bf.barrier_type, "status": bf.status, "evidence": bf.evidence_text}
+        for bf in barrier_findings
+    ]
     fingerprint_json = build_fingerprint(report, analysis, barrier_dicts, standards_tags=standards)
     existing_fp = db.query(PrecursorFingerprint).filter(PrecursorFingerprint.report_id == report.id).first()
     if existing_fp:
@@ -429,7 +514,6 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
     db.refresh(analysis)
 
     try:
-        # Incremental insert for new reports; existing ids stay until rebuild_from_db
         faiss_index.upsert_vector(report.id, fp_embedding)
     except faiss_index.DimensionMismatchError:
         try:
@@ -442,7 +526,43 @@ def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
         except Exception:
             pass
 
+    try:
+        analysis._pipeline_stages = list(state.get("stages") or []) + ["explain_persist"]  # type: ignore[attr-defined]
+        analysis._similar_at_analysis = similar_for_llm  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    try:
+        from app.services.notification_service import maybe_notify_hipo
+        maybe_notify_hipo(db, report, analysis)
+    except Exception:
+        pass
+
     return analysis
+
+
+def run_pipeline_steps(db: Session, report: Report) -> AnalysisResult:
+    """Sequential fallback: same step functions as the LangGraph path."""
+    state = step_preprocess(report)
+    if state.get("halt"):
+        return step_explain_persist(db, report, state)
+    state = step_extract(state)
+    state = step_barriers_lsr(state)
+    state = step_ml_fuse(db, report, state)
+    state = step_retrieve(db, report, state)
+    return step_explain_persist(db, report, state)
+
+
+def analyze_report(db: Session, report: Report) -> AnalysisResult:
+    """Public entrypoint — LangGraph orchestrates stages; same DB/API contract."""
+    from app.services.pipeline_graph import run_analysis_graph
+
+    return run_analysis_graph(db, report)
+
+
+def analyze_report_impl(db: Session, report: Report) -> AnalysisResult:
+    """Non-graph fallback — calls the same shared step functions."""
+    return run_pipeline_steps(db, report)
 
 
 def _persist_language_abstention(db: Session, report: Report, reason: str) -> AnalysisResult:
@@ -488,5 +608,4 @@ def _persist_language_abstention(db: Session, report: Report, reason: str) -> An
     return analysis
 
 
-# Keep a private alias used by older imports/tests if any
 _analyze_report_body = analyze_report_impl

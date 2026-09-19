@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.base import init_db
-from app.api.routes import auth, reports, dashboard, review, evaluation, clusters, audit, catalog
+from app.api.routes import auth, reports, dashboard, review, evaluation, clusters, audit, catalog, routing
 
 settings = get_settings()
 
@@ -29,6 +29,9 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    from app.ml.embeddings import init_embedding_backend_at_startup
+
+    init_embedding_backend_at_startup()
 
 
 @app.get("/")
@@ -38,7 +41,16 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    from app.ml.embeddings import get_embedding_runtime_status
+
+    status = get_embedding_runtime_status()
+    return {
+        "status": "ok",
+        "embedding_backend": status["embedding_backend"],
+        "embedding_configured": status["configured_model"],
+        "embedding_fallback": status["fallback"],
+        "embedding_fallback_reason": status["fallback_reason"],
+    }
 
 
 app.include_router(auth.router)
@@ -49,3 +61,4 @@ app.include_router(evaluation.router)
 app.include_router(clusters.router)
 app.include_router(audit.router)
 app.include_router(catalog.router)
+app.include_router(routing.router)

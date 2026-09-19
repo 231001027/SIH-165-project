@@ -1,5 +1,5 @@
 {
-  "taxonomy_version": "1.0.0",
+  "taxonomy_version": "2.0.0",
   "_sourcing_discipline": {
     "kind_1": "Directly sourced from a cited external standard with a verifiable reference.",
     "kind_3": "Team-designed matching architecture for this prototype — NOT claimed as an official ISO 45001 / PSM / DGMS formula."
@@ -8,62 +8,158 @@
     "name": "IOGP Life-Saving Rules",
     "kind": 1,
     "source": "IOGP Report 459 (2018 revision) — 9 Life-Saving Rules",
-    "artifact": "app/data/lsr_knowledge_base.json"
+    "artifact": "app/data/lsr_knowledge_base.json",
+    "note": "Rule names are Kind-1. Trigger concepts / matching architecture are Kind-3 (see lsr_knowledge_base.json)."
   },
-  "supporting_vocabularies": [
-    {
-      "name": "energy_categories",
+  "supporting_vocabularies": {
+    "energy_categories": {
       "kind": 3,
-      "note": "Team-designed energy/hazard energy bins used by the rule engine. Not a verbatim ISO 45001 Annex A list."
+      "note": "Team-designed energy bins for the rule engine — not a verbatim ISO 45001 Annex A list.",
+      "items": {
+        "PRESSURE": [
+          "pressure", "pressurized", "pressurised", "residual pressure", "line pressure",
+          "psi", "bar of pressure", "pneumatic"
+        ],
+        "ELECTRICAL": [
+          "electrical", "voltage", "live wire", "energized", "energised", "shock hazard",
+          "electrocution", "live circuit", "high voltage"
+        ],
+        "GRAVITY": [
+          "height", "elevation", "elevated", "fell", "falling", "dropped from",
+          "scaffold", "ladder", "roof", "platform edge", "fall arrest", "fall protection",
+          "fall from"
+        ],
+        "MECHANICAL": [
+          "rotating equipment", "moving machinery", "mechanical energy", "spring loaded",
+          "rotating", "conveyor", "pinch point", "moving parts", "suspended load",
+          "struck by", "swinging pipe", "swinging load", "crane lift", "lifting operation",
+          "dropped object", "rigging sling", "tag line"
+        ],
+        "CHEMICAL": [
+          "chemical", "toxic", "h2s", "corrosive", "solvent", "flammable", "asphyxiant",
+          "hazardous vapour", "hazardous vapor", "fumes",
+          "confined space", "manway", "tank", "vessel"
+        ],
+        "MOTION": [
+          "vehicle", "moving vehicle", "mobile equipment", "forklift", "crane movement",
+          "traffic", "reversing", "driving", "drove", "driver", "excavator"
+        ]
+      }
     },
-    {
-      "name": "hazard_labels",
+    "hazard_labels": {
       "kind": 3,
-      "note": "Team-designed free-text hazard labels for demo extraction."
+      "note": "Team-designed free-text hazard labels keyed by energy category.",
+      "items": {
+        "PRESSURE": "Stored / pressurized energy",
+        "ELECTRICAL": "Electrical energy",
+        "GRAVITY": "Gravity / fall hazard",
+        "MECHANICAL": "Mechanical stored / kinetic energy",
+        "CHEMICAL": "Chemical / atmospheric hazard",
+        "MOTION": "Mobile equipment / motion hazard"
+      }
     },
-    {
-      "name": "barrier_types",
+    "energy_source_labels": {
+      "kind": 3,
+      "items": {
+        "PRESSURE": "Pressurized fluid",
+        "ELECTRICAL": "Electrical circuit",
+        "GRAVITY": "Elevation / gravity",
+        "MECHANICAL": "Mechanical stored energy",
+        "CHEMICAL": "Hazardous chemical / atmosphere",
+        "MOTION": "Moving vehicle or mobile equipment"
+      }
+    },
+    "barrier_types": {
+      "kind": 3,
+      "explicit_non_claim": "These barrier types are NOT derived from ISO 45001 or OSHA PSM 14-element text. Any ISO/PSM wording in UI tags is a Kind-3 secondary overlay for orientation only.",
+      "items": {
+        "Isolation / LOTO": [
+          "isolation", "loto", "lockout", "tagout", "lock-out", "tag-out",
+          "zero energy verification", "zero energy"
+        ],
+        "Permit-to-Work": ["permit", "ptw", "work authorization", "work authorisation"],
+        "Guarding": ["guard", "guarding", "machine guard"],
+        "PPE": [
+          "ppe", "personal protective equipment", "hard hat", "harness", "gloves",
+          "safety glasses", "respirator"
+        ],
+        "Fall Protection": ["fall arrest", "fall protection", "lanyard", "anchor point"],
+        "Gas Detection": [
+          "gas test", "gas testing", "gas detector", "atmospheric test",
+          "lel test", "lel meter"
+        ],
+        "Exclusion Zone": ["exclusion zone", "barricade", "cordon", "restricted area"],
+        "Communication / Handover": [
+          "handover", "shift handover", "communication protocol", "toolbox talk"
+        ],
+        "Pressure Relief": ["pressure relief", "relief valve", "psv", "venting"],
+        "Supervision": ["supervision", "supervisor present", "oversight"]
+      }
+    },
+    "barrier_statuses": {
       "kind": 3,
       "items": [
-        "Isolation / LOTO",
-        "Permit to Work",
-        "Gas Testing",
-        "PPE",
-        "Supervision / Spotter",
-        "Scaffolding / Fall Protection"
-      ],
-      "cross_references": {
-        "Isolation / LOTO": {
-          "possible_correspondence": "OSHA 1910.147 Control of Hazardous Energy (LOTO) / PSM element 'Mechanical Integrity' & safe work practices — analogous only",
-          "claim_level": "analogy_not_derivation"
-        },
-        "Permit to Work": {
-          "possible_correspondence": "Common industry PTW practice; not a numbered ISO 45001 clause in this codebase",
-          "claim_level": "team_designed"
-        }
-      },
-      "explicit_non_claim": "These barrier types are NOT derived from ISO 45001 or OSHA PSM 14-element text. Any ISO/PSM wording in UI tags is a Kind-3 secondary overlay for orientation only."
+        "PRESENT_EFFECTIVE",
+        "MISSING",
+        "FAILED",
+        "BYPASSED",
+        "NOT_VERIFIED",
+        "UNKNOWN"
+      ]
     },
-    {
-      "name": "barrier_statuses",
+    "sif_bands": {
       "kind": 3,
-      "note": "PRESENT_EFFECTIVE / MISSING / FAILED / BYPASSED / NOT_VERIFIED / UNKNOWN — prototype polarity labels."
-    },
-    {
-      "name": "reason_codes",
-      "kind": 3,
-      "note": "Machine-readable explanation codes emitted by the rule engine."
-    },
-    {
-      "name": "sif_bands",
-      "kind": 3,
-      "note": "HIGH / MEDIUM / LOW / NON_SIF / REVIEW / UNSUPPORTED_LANGUAGE — prototype decision bands, not an official OIL formula."
+      "items": [
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "NON_SIF",
+        "REVIEW",
+        "UNSUPPORTED_LANGUAGE"
+      ]
     }
-  ],
+  },
   "secondary_overlays": {
     "name": "standards_tags",
     "kind": 3,
-    "artifact": "app/services/standards_tags.py",
-    "note": "Optional ISO 45001 / PSM-inspired labels mapped heuristically from Kind-3 fields. They do not replace IOGP LSR as the primary classifier output."
+    "note": "Optional ISO 45001 / PSM-inspired labels mapped heuristically from Kind-3 fields. They do not replace IOGP LSR as the primary classifier output. Not official OIL/ISO scoring.",
+    "hazard_to_iso": {
+      "Stored / pressurized energy": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Mechanical Integrity"
+      ],
+      "Electrical energy": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Energy Isolation"
+      ],
+      "Gravity / fall hazard": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Safe Work Practices"
+      ],
+      "Mechanical stored / kinetic energy": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Mechanical Integrity"
+      ],
+      "Chemical / atmospheric hazard": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Process Safety Information"
+      ],
+      "Mobile equipment / motion hazard": [
+        "ISO 45001:8.1 Operational planning",
+        "PSM: Safe Work Practices"
+      ]
+    },
+    "barrier_to_psm": {
+      "Isolation / LOTO": ["PSM: Energy Isolation / LOTO"],
+      "Permit-to-Work": ["PSM: Safe Work Practices / PTW"],
+      "Guarding": ["PSM: Mechanical Integrity"],
+      "PPE": ["ISO 45001:8.1.2 Eliminating hazards"],
+      "Fall Protection": ["ISO 45001:8.1 Operational planning"],
+      "Gas Detection": ["PSM: Confined Space Entry"],
+      "Exclusion Zone": ["ISO 45001:8.1 Operational planning"],
+      "Communication / Handover": ["ISO 45001:7.4 Communication"],
+      "Pressure Relief": ["PSM: Mechanical Integrity"],
+      "Supervision": ["ISO 45001:7.2 Competence"]
+    }
   }
 }

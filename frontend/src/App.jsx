@@ -15,6 +15,7 @@ import RankingsPage from "./pages/RankingsPage";
 import EvaluationPage from "./pages/EvaluationPage";
 import AuditPage from "./pages/AuditPage";
 import AboutPage from "./pages/AboutPage";
+import RoutingPage from "./pages/RoutingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 function ProtectedRoute({ children, roles }) {
@@ -57,6 +58,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["ADMIN"]}>
               <AuditPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/routing"
+          element={
+            <ProtectedRoute roles={["ADMIN"]}>
+              <RoutingPage />
             </ProtectedRoute>
           }
         />

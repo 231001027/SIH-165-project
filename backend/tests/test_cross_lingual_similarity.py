@@ -4,14 +4,20 @@ Rule NLP stays English-only; these tests cover retrieval embeddings only.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 
+from app.core.config import Settings, get_settings
 from app.ml import faiss_index
 from app.ml.embeddings import (
     DEFAULT_ST_MODEL,
     SentenceTransformerEmbeddingProvider,
     TfidfSvdEmbeddingProvider,
+    load_provider,
+    reset_embedding_provider,
+    resolve_embedding_model_name,
 )
 
 
@@ -66,11 +72,34 @@ def test_tfidf_provider_embed_shape():
     assert abs(np.linalg.norm(vec) - 1.0) < 1e-5
 
 
-def test_cross_lingual_loto_beats_unrelated_baseline():
-    """EN ↔ Devanagari LOTO should outrank EN ↔ unrelated office text."""
+def test_default_embedding_model_is_multilingual_minilm():
+    """Regression guard: Settings default must be multilingual ST, not TF-IDF."""
+    # Field default on the Settings class (independent of process env).
+    field_default = Settings.model_fields["EMBEDDING_MODEL"].default
+    assert field_default == DEFAULT_ST_MODEL, (
+        f"EMBEDDING_MODEL default drifted to {field_default!r}; expected {DEFAULT_ST_MODEL!r}"
+    )
+
+
+def test_cross_lingual_loto_beats_unrelated_against_configured_default(monkeypatch):
+    """EN ↔ Devanagari LOTO should outrank EN ↔ unrelated using the *default* backend.
+
+    Clears EMBEDDING_MODEL env so resolve_embedding_model_name() reflects the
+    Settings default (multilingual MiniLM). A silent revert to tfidf-svd-local
+    would fail the default assertion and/or this cosine ranking.
+    """
     pytest.importorskip("sentence_transformers")
-    provider = SentenceTransformerEmbeddingProvider(DEFAULT_ST_MODEL)
-    provider.load()
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
+    get_settings.cache_clear()
+    reset_embedding_provider()
+
+    configured = resolve_embedding_model_name()
+    assert configured == DEFAULT_ST_MODEL, (
+        f"resolve_embedding_model_name()={configured!r}; expected default {DEFAULT_ST_MODEL!r}"
+    )
+
+    provider = load_provider(configured)
+    assert isinstance(provider, SentenceTransformerEmbeddingProvider)
 
     en_vec = np.asarray(provider.embed_single(EN_LOTO))
     hi_vec = np.asarray(provider.embed_single(HI_LOTO))
@@ -81,3 +110,8 @@ def test_cross_lingual_loto_beats_unrelated_baseline():
     assert cross > baseline, (
         f"Expected EN↔HI LOTO cosine ({cross:.4f}) > EN↔unrelated ({baseline:.4f})"
     )
+
+    # Restore test-suite offline default
+    monkeypatch.setenv("EMBEDDING_MODEL", "tfidf-svd-local")
+    get_settings.cache_clear()
+    reset_embedding_provider()

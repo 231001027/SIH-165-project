@@ -61,6 +61,41 @@ def seed_users(db):
     print(f"Seeded {created} demo user(s) (skipped {len(DEMO_USERS) - created} already present).")
 
 
+def seed_demo_routing(db):
+    """DEMO ROUTING CONFIG — not real OIL contacts. Editable via /api/routing."""
+    from app.models.notification import AssigneeRouting, AssigneeRole
+
+    if db.query(AssigneeRouting).count() > 0:
+        print("Assignee routing already seeded -- skipping.")
+        return
+
+    # Must match Site names used in synthetic CSV
+    sites = [
+        "Site A (Upstream E&P)",
+        "Site B (Pipeline Corridor)",
+        "Site C (Gas Processing)",
+        "Site D (Drilling Rig)",
+        "Site E (Terminal)",
+    ]
+    for i, site in enumerate(sites):
+        db.add(AssigneeRouting(
+            site=site,
+            role=AssigneeRole.SITE_HSE_MANAGER,
+            person_name=f"Demo HSE Manager {chr(65 + i)}",
+            email=f"hse.manager.{chr(97 + i)}@demo.sifguard.local",
+            is_active=True,
+        ))
+        db.add(AssigneeRouting(
+            site=site,
+            role=AssigneeRole.SITE_HSE_OFFICER,
+            person_name=f"Demo HSE Officer {chr(65 + i)}",
+            email=f"hse.officer.{chr(97 + i)}@demo.sifguard.local",
+            is_active=True,
+        ))
+    db.commit()
+    print(f"Seeded demo assignee_routing for {len(sites)} sites (DEMO CONFIG — not real OIL contacts).")
+
+
 def _get_or_create_site(db, name):
     site = db.query(Site).filter(Site.name == name).first()
     if not site:
@@ -131,12 +166,14 @@ def load_synthetic_reports(db) -> dict[int, dict]:
 
 
 def load_reference_corpus(db) -> list[int]:
-    """Loads a small, real, publicly-cited reference corpus of historical
-    severe-injury/fatality incidents (data/reference_corpus/incidents.json --
-    see the file's own citation_url per entry) used ONLY to ground similar-
-    precursor retrieval against genuine documented incidents, never as OIL
-    data. Excluded from every KPI/trend/ranking/cluster/gold-set computation
-    (see the ReportSource.PUBLIC_CORPUS filters throughout app/services/)."""
+    """Loads the public reference corpus (data/reference_corpus/incidents.json).
+
+    See app.data.corpus_provenance.CORPUS_PROVENANCE_STATEMENT for exact composition
+    (REAL_OSHA / REAL_DGMS / SYNTHETIC_DEMO). Used ONLY to ground similar-precursor
+    retrieval; excluded from KPI/trend/ranking/cluster/gold-set computations.
+    """
+    from app.data.corpus_provenance import CORPUS_PROVENANCE_ENUM, CORPUS_PROVENANCE_STATEMENT
+
     if not REFERENCE_CORPUS_JSON.exists():
         print(f"NOTE: {REFERENCE_CORPUS_JSON} not found -- skipping reference-corpus grounding "
               f"(similarity search will still work over the synthetic/OIL corpus alone).")
@@ -145,12 +182,16 @@ def load_reference_corpus(db) -> list[int]:
         print("Reference corpus already seeded -- skipping.")
         return [r.id for r in db.query(Report).filter(Report.source == ReportSource.PUBLIC_CORPUS).all()]
 
+    print(CORPUS_PROVENANCE_STATEMENT)
     with open(REFERENCE_CORPUS_JSON, "r", encoding="utf-8") as f:
         entries = json.load(f)
 
     ids = []
     for i, entry in enumerate(entries):
         year = entry.get("occurred_year") or 2020
+        provenance = entry.get("provenance") or "SYNTHETIC_DEMO"
+        if provenance not in CORPUS_PROVENANCE_ENUM:
+            raise ValueError(f"Invalid provenance {provenance!r} in reference corpus entry {i}")
         report = Report(
             report_code=f"REF-{1000 + i + 1}",
             report_type=ReportType.INCIDENT,
@@ -161,13 +202,14 @@ def load_reference_corpus(db) -> list[int]:
             source=ReportSource.PUBLIC_CORPUS,
             citation_label=entry["citation_label"],
             citation_url=entry["citation_url"],
+            provenance=provenance,
             occurred_at=datetime(year, 1, 1),
         )
         db.add(report)
         db.flush()
         ids.append(report.id)
     db.commit()
-    print(f"Loaded {len(ids)} real, cited reference-corpus incidents for similarity grounding.")
+    print(f"Loaded {len(ids)} reference-corpus incidents for similarity grounding.")
     return ids
 
 
@@ -291,7 +333,8 @@ def record_model_version(db, classifier_metrics: dict):
         return
     db.add(ModelVersion(
         version=MODEL_VERSION, component="sif_classifier+rule_engine+lsr_engine+barrier_engine",
-        description="Hackathon prototype: deterministic rule engine + TF-IDF/SVD embeddings + "
+        description="Hackathon prototype: deterministic rule engine + multilingual embeddings "
+                     "(Sentence-Transformers default; TF-IDF fallback) + "
                      "logistic-regression classifier, fused with confidence-banded abstention.",
         metrics=classifier_metrics,
     ))
@@ -308,6 +351,7 @@ def main():
     db = SessionLocal()
     try:
         seed_users(db)
+        seed_demo_routing(db)
         meta = load_synthetic_reports(db)
         reference_ids = load_reference_corpus(db)
         # Reference-corpus reports are analyzed through both passes exactly like

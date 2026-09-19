@@ -179,6 +179,7 @@ def compare_precursors(db: Session, query_id: int, match_id: int) -> dict:
         "match_source": "PUBLIC_CORPUS" if is_reference else "INTERNAL",
         "citation_label": m.citation_label if is_reference else None,
         "citation_url": m.citation_url if is_reference else None,
+        "provenance": m.provenance if is_reference else None,
         "query_highlights": [s for s in qb["entity_spans"] if s][:12],
         "match_highlights": [s for s in mb["entity_spans"] if s][:12],
         "fields": fields,

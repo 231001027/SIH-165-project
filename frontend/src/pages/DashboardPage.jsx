@@ -12,7 +12,7 @@ import { LoadingState, ErrorState } from "../components/StateViews";
 import { SyntheticBadge } from "../components/Badges";
 import SiteActivityHeatmap from "../components/SiteActivityHeatmap";
 import {
-  IconList, IconFlame, IconBolt, IconEval, IconTrend, IconRank, IconAlertTriangle, IconArrowUpRight,
+  IconList, IconFlame, IconBolt, IconEval, IconTrend, IconRank, IconAlertTriangle, IconArrowUpRight, IconCheckShield,
 } from "../components/icons";
 
 const SIF_COLORS = { HIGH: "#e0264f", MEDIUM: "#f2932c", LOW: "#d4a017", NON_SIF: "#189a6b", REVIEW: "#7c5cf0" };
@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [sites, setSites] = useState([]);
   const [heatmap, setHeatmap] = useState([]);
   const [lsrBySite, setLsrBySite] = useState(null);
+  const [responseTime, setResponseTime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -43,7 +44,7 @@ export default function DashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [s, t, l, b, sitesResp, heatmapResp, lsrSiteResp] = await Promise.all([
+      const [s, t, l, b, sitesResp, heatmapResp, lsrSiteResp, rt] = await Promise.all([
         api.get("/api/dashboard/summary"),
         api.get("/api/dashboard/trends"),
         api.get("/api/dashboard/lsr"),
@@ -51,6 +52,7 @@ export default function DashboardPage() {
         api.get("/api/dashboard/sites"),
         api.get("/api/dashboard/heatmap"),
         api.get("/api/dashboard/lsr-by-site"),
+        api.get("/api/metrics/response-time").catch(() => ({ data: null })),
       ]);
       setSummary(s.data);
       setTrends(t.data);
@@ -59,6 +61,7 @@ export default function DashboardPage() {
       setSites(sitesResp.data.ranking.slice(0, 5));
       setHeatmap(heatmapResp.data.matrix);
       setLsrBySite(lsrSiteResp.data);
+      setResponseTime(rt.data);
     } catch (err) {
       setError(extractErrorMessage(err, "Failed to load dashboard data."));
     } finally {
@@ -92,7 +95,7 @@ export default function DashboardPage() {
         actions={<SyntheticBadge />}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-7">
         <KpiCard label="Total Reports" value={summary.total_reports} icon={<IconList className="h-4 w-4" />} />
         <KpiCard label="SIF-Potential" value={summary.sif_high + summary.sif_medium} accent="medium" icon={<IconFlame className="h-4 w-4" />} />
         <KpiCard label="High Risk" value={summary.sif_high} accent="high" icon={<IconAlertTriangle className="h-4 w-4" />} />
@@ -105,6 +108,21 @@ export default function DashboardPage() {
         />
         <KpiCard label="Repeat Precursors" value={summary.repeat_precursor_reports} accent="medium" icon={<IconTrend className="h-4 w-4" />} />
         <KpiCard label="Critical Barrier Failures" value={summary.critical_barrier_failures} accent="high" icon={<IconBolt className="h-4 w-4" />} />
+        <KpiCard
+          label="Median ack time"
+          value={
+            responseTime?.overall?.median_seconds != null
+              ? `${Math.round(responseTime.overall.median_seconds)}s`
+              : "—"
+          }
+          accent="medium"
+          icon={<IconCheckShield className="h-4 w-4" />}
+          sub={
+            responseTime?.overall?.count
+              ? `${responseTime.overall.count} acknowledged alerts`
+              : "No acknowledgments yet"
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

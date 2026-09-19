@@ -12,3 +12,4 @@ from app.models.analysis import (  # noqa: F401
 )
 from app.models.review import HumanReview, ReviewAction, Feedback  # noqa: F401
 from app.models.audit import AuditLog, ModelVersion, EvaluationCase  # noqa: F401
+from app.models.notification import AssigneeRouting, AssigneeRole, NotificationLog  # noqa: F401

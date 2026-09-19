@@ -100,6 +100,32 @@ export function ReferenceIncidentBadge({ url }) {
   );
 }
 
+const PROVENANCE_STYLES = {
+  REAL_OSHA: "border-accent-200 bg-accent-50 text-accent-800",
+  REAL_DGMS: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  SYNTHETIC_DEMO: "border-amber-200 bg-amber-50 text-amber-900",
+};
+
+const PROVENANCE_LABELS = {
+  REAL_OSHA: "Real OSHA citation",
+  REAL_DGMS: "Real DGMS citation",
+  SYNTHETIC_DEMO: "Synthetic demo (not a real extract)",
+};
+
+export function ProvenanceBadge({ provenance }) {
+  if (!provenance) return null;
+  const style = PROVENANCE_STYLES[provenance] || "border-line bg-surface-muted text-ink_text-secondary";
+  const label = PROVENANCE_LABELS[provenance] || provenance;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10.5px] font-semibold ${style}`}
+      title={label}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function ReportTypeBadge({ value }) {
   return (
     <span className="inline-block rounded-md border border-line bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink_text-secondary">

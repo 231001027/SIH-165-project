@@ -38,9 +38,21 @@ class Settings(BaseSettings):
     # Compose service DNS is http://ollama:11434; local non-Docker default below.
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
 
-    EMBEDDING_MODEL: str = "tfidf-svd-local"  # or paraphrase-multilingual-MiniLM-L12-v2
+    # Default: multilingual Sentence-Transformers (paraphrase-multilingual-MiniLM-L12-v2).
+    # Override with EMBEDDING_MODEL=tfidf-svd-local for fully offline / no-download demos.
+    # Cold-start requires internet once to download weights, or pre-download:
+    #   python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+    EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
 
     FRONTEND_URL: str = "http://localhost:5173"
+
+    # Hi-Po / HIGH alert delivery: mock (console) | smtp
+    NOTIFY_MODE: str = "mock"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "sifguard-alerts@localhost"
 
     # Abstention / confidence bands (prototype thresholds, Part 3.2 of blueprint)
     CONFIDENCE_HIGH: float = 75.0
